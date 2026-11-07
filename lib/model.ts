@@ -24,6 +24,37 @@ export function pOver(line: number, lambda: number): number {
   return Math.max(0, 1 - poissonCdf(Math.floor(line), lambda));
 }
 
+/**
+ * Rozkład ujemny dwumianowy (średnia mu, rozrzut r): wariancja = mu + mu²/r.
+ * Rożne, strzały i kartki mają większy rozrzut niż zakłada Poisson, więc dla nich
+ * używamy tego rozkładu. r = Infinity oznacza zwykły rozkład Poissona.
+ */
+export function nbOver(line: number, mu: number, r: number): number {
+  if (!Number.isFinite(r)) return pOver(line, mu);
+  const k = Math.floor(line);
+  const q = mu / (r + mu);
+  let p = Math.pow(r / (r + mu), r);
+  let cdf = p;
+  for (let i = 1; i <= k; i++) {
+    p *= ((i - 1 + r) / i) * q;
+    cdf += p;
+  }
+  return Math.max(0, Math.min(1, 1 - cdf));
+}
+
+/** Wersja modelu – zmień ją po każdej zmianie obliczeń (zakładka Skuteczność przeliczy wtedy historię). */
+export const MODEL_VERSION = 2;
+
+/**
+ * Parametry modelu. `dispersion` = r rozkładu ujemnego dwumianowego dla każdej statystyki
+ * (mniejsze r = większy rozrzut, Infinity = Poisson). Dobrane testem wstecznym na ok. 430
+ * meczach z 17.10–6.11.2026 (najniższy błąd Briera): rożne mają duży rozrzut, strzały celne
+ * umiarkowany, a dla kartek i wszystkich strzałów Poisson wypadał najlepiej.
+ */
+export const MODEL_CFG = {
+  dispersion: { corners: 7, yellow: Infinity, sot: 15, shots: Infinity } as Record<'corners' | 'yellow' | 'sot' | 'shots', number>,
+};
+
 export type MarketGroup = 'Wynik' | 'Bramki' | 'Rożne' | 'Kartki' | 'Strzały celne' | 'Strzały';
 
 export interface Market {
@@ -134,6 +165,7 @@ export function buildModel(H: TeamSummary, A: TeamSummary): { model: ModelOutput
   const shots = exp('shots');
   const red = { home: H.stats.red.avgFor, away: A.stats.red.avgFor, total: (H.stats.red.avgTotal + A.stats.red.avgTotal) / 2 };
 
+  const D = MODEL_CFG.dispersion;
   const markets: Market[] = [];
   const add = (id: string, group: MarketGroup, family: string, label: string, p: number, pred: Pred) => {
     markets.push({
@@ -174,39 +206,39 @@ export function buildModel(H: TeamSummary, A: TeamSummary): { model: ModelOutput
   if (statOk) {
     // Rożne
     for (const line of [7.5, 8.5, 9.5, 10.5, 11.5]) {
-      add(`c-o${line}`, 'Rożne', 'c-over', `Rożne powyżej ${line}`, pOver(line, corners.total), (v) => { const s = sumStat(v, 'corners'); return s === null ? null : s > line; });
+      add(`c-o${line}`, 'Rożne', 'c-over', `Rożne powyżej ${line}`, nbOver(line, corners.total, D.corners), (v) => { const s = sumStat(v, 'corners'); return s === null ? null : s > line; });
     }
     for (const line of [8.5, 9.5, 10.5]) {
-      add(`c-u${line}`, 'Rożne', 'c-under', `Rożne poniżej ${line}`, 1 - pOver(line, corners.total), (v) => { const s = sumStat(v, 'corners'); return s === null ? null : s < line; });
+      add(`c-u${line}`, 'Rożne', 'c-under', `Rożne poniżej ${line}`, 1 - nbOver(line, corners.total, D.corners), (v) => { const s = sumStat(v, 'corners'); return s === null ? null : s < line; });
     }
     for (const line of [3.5, 4.5, 5.5]) {
-      add(`hc-o${line}`, 'Rożne', 'hc-over', `${H.team.name}: rożne powyżej ${line}`, pOver(line, corners.home), (v) => { const s = sideStat(v, 'h', 'corners'); return s === null ? null : s > line; });
-      add(`ac-o${line}`, 'Rożne', 'ac-over', `${A.team.name}: rożne powyżej ${line}`, pOver(line, corners.away), (v) => { const s = sideStat(v, 'a', 'corners'); return s === null ? null : s > line; });
+      add(`hc-o${line}`, 'Rożne', 'hc-over', `${H.team.name}: rożne powyżej ${line}`, nbOver(line, corners.home, D.corners), (v) => { const s = sideStat(v, 'h', 'corners'); return s === null ? null : s > line; });
+      add(`ac-o${line}`, 'Rożne', 'ac-over', `${A.team.name}: rożne powyżej ${line}`, nbOver(line, corners.away, D.corners), (v) => { const s = sideStat(v, 'a', 'corners'); return s === null ? null : s > line; });
     }
 
     // Kartki
     for (const line of [2.5, 3.5, 4.5, 5.5]) {
-      add(`y-o${line}`, 'Kartki', 'y-over', `Żółte kartki powyżej ${line}`, pOver(line, yellow.total), (v) => { const s = sumStat(v, 'yellow'); return s === null ? null : s > line; });
-      add(`y-u${line}`, 'Kartki', 'y-under', `Żółte kartki poniżej ${line}`, 1 - pOver(line, yellow.total), (v) => { const s = sumStat(v, 'yellow'); return s === null ? null : s < line; });
+      add(`y-o${line}`, 'Kartki', 'y-over', `Żółte kartki powyżej ${line}`, nbOver(line, yellow.total, D.yellow), (v) => { const s = sumStat(v, 'yellow'); return s === null ? null : s > line; });
+      add(`y-u${line}`, 'Kartki', 'y-under', `Żółte kartki poniżej ${line}`, 1 - nbOver(line, yellow.total, D.yellow), (v) => { const s = sumStat(v, 'yellow'); return s === null ? null : s < line; });
     }
     for (const line of [0.5, 1.5, 2.5]) {
-      add(`hy-o${line}`, 'Kartki', 'hy-over', `${H.team.name}: żółte powyżej ${line}`, pOver(line, yellow.home), (v) => { const s = sideStat(v, 'h', 'yellow'); return s === null ? null : s > line; });
-      add(`ay-o${line}`, 'Kartki', 'ay-over', `${A.team.name}: żółte powyżej ${line}`, pOver(line, yellow.away), (v) => { const s = sideStat(v, 'a', 'yellow'); return s === null ? null : s > line; });
+      add(`hy-o${line}`, 'Kartki', 'hy-over', `${H.team.name}: żółte powyżej ${line}`, nbOver(line, yellow.home, D.yellow), (v) => { const s = sideStat(v, 'h', 'yellow'); return s === null ? null : s > line; });
+      add(`ay-o${line}`, 'Kartki', 'ay-over', `${A.team.name}: żółte powyżej ${line}`, nbOver(line, yellow.away, D.yellow), (v) => { const s = sideStat(v, 'a', 'yellow'); return s === null ? null : s > line; });
     }
     add('red', 'Kartki', 'red', 'Czerwona kartka w meczu', 1 - Math.exp(-red.total), (v) => { const s = sumStat(v, 'red'); return s === null ? null : s > 0; });
 
     // Strzały celne
     for (const line of [6.5, 7.5, 8.5, 9.5, 10.5]) {
-      add(`s-o${line}`, 'Strzały celne', 's-over', `Strzały celne powyżej ${line}`, pOver(line, sot.total), (v) => { const s = sumStat(v, 'sot'); return s === null ? null : s > line; });
+      add(`s-o${line}`, 'Strzały celne', 's-over', `Strzały celne powyżej ${line}`, nbOver(line, sot.total, D.sot), (v) => { const s = sumStat(v, 'sot'); return s === null ? null : s > line; });
     }
     for (const line of [2.5, 3.5, 4.5, 5.5]) {
-      add(`hs-o${line}`, 'Strzały celne', 'hs-over', `${H.team.name}: celne powyżej ${line}`, pOver(line, sot.home), (v) => { const s = sideStat(v, 'h', 'sot'); return s === null ? null : s > line; });
-      add(`as-o${line}`, 'Strzały celne', 'as-over', `${A.team.name}: celne powyżej ${line}`, pOver(line, sot.away), (v) => { const s = sideStat(v, 'a', 'sot'); return s === null ? null : s > line; });
+      add(`hs-o${line}`, 'Strzały celne', 'hs-over', `${H.team.name}: celne powyżej ${line}`, nbOver(line, sot.home, D.sot), (v) => { const s = sideStat(v, 'h', 'sot'); return s === null ? null : s > line; });
+      add(`as-o${line}`, 'Strzały celne', 'as-over', `${A.team.name}: celne powyżej ${line}`, nbOver(line, sot.away, D.sot), (v) => { const s = sideStat(v, 'a', 'sot'); return s === null ? null : s > line; });
     }
 
     // Strzały (wszystkie)
     for (const line of [19.5, 21.5, 23.5, 25.5]) {
-      add(`sh-o${line}`, 'Strzały', 'sh-over', `Strzały łącznie powyżej ${line}`, pOver(line, shots.total), (v) => { const s = sumStat(v, 'shots'); return s === null ? null : s > line; });
+      add(`sh-o${line}`, 'Strzały', 'sh-over', `Strzały łącznie powyżej ${line}`, nbOver(line, shots.total, D.shots), (v) => { const s = sumStat(v, 'shots'); return s === null ? null : s > line; });
     }
   }
 

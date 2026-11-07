@@ -25,6 +25,12 @@ function open(): Database.Database {
       key text primary key,
       value text not null
     );
+    create table if not exists backtest (
+      fixture_id integer primary key,
+      kickoff text not null,
+      model_version integer not null,
+      row text not null
+    );
     create table if not exists analyses (
       fixture_id integer primary key,
       kickoff text not null,
@@ -76,4 +82,17 @@ export function upcomingAnalysisSummaries(): unknown[] {
     .prepare('select summary from analyses where kickoff >= ? order by kickoff asc limit 40')
     .all(since) as { summary: string }[];
   return rows.map((r) => JSON.parse(r.summary));
+}
+
+export function backtestGet(fixtureId: number, version: number): unknown | undefined {
+  const r = db.prepare('select row from backtest where fixture_id = ? and model_version = ?').get(fixtureId, version) as
+    | { row: string }
+    | undefined;
+  return r ? JSON.parse(r.row) : undefined;
+}
+
+export function backtestSave(fixtureId: number, kickoff: string, version: number, row: unknown) {
+  db.prepare(
+    'insert into backtest (fixture_id, kickoff, model_version, row) values (?, ?, ?, ?) on conflict(fixture_id) do update set kickoff = excluded.kickoff, model_version = excluded.model_version, row = excluded.row',
+  ).run(fixtureId, kickoff, version, JSON.stringify(row));
 }

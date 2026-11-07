@@ -14,16 +14,31 @@ export interface GetOptions {
   soft?: boolean;
 }
 
+// Najwyżej 8 zapytań do ESPN naraz – żeby nie przeciążać serwera przy dużych przeliczeniach
+const g = globalThis as unknown as { __espnActive?: number; __espnQueue?: (() => void)[] };
+async function slot<T>(fn: () => Promise<T>): Promise<T> {
+  g.__espnActive ??= 0;
+  g.__espnQueue ??= [];
+  if (g.__espnActive >= 8) await new Promise<void>((r) => g.__espnQueue!.push(r));
+  g.__espnActive++;
+  try {
+    return await fn();
+  } finally {
+    g.__espnActive--;
+    g.__espnQueue.shift()?.();
+  }
+}
+
 export async function espnGet<T>(path: string, opts: GetOptions): Promise<T | null> {
   const key = `espn:${path}`;
   const fresh = cacheGet<T>(key, opts.maxAgeMs);
   if (fresh) return fresh;
   try {
-    const res = await fetch(`${BASE}/${path}`, {
+    const res = await slot(() => fetch(`${BASE}/${path}`, {
       headers: { 'user-agent': 'Mozilla/5.0 (KuponLab; uzytek prywatny)', accept: 'application/json' },
       cache: 'no-store',
       signal: AbortSignal.timeout(15_000),
-    });
+    }));
     if (!res.ok) {
       if (opts.soft) return null;
       throw new DataError(`ESPN odpowiedziało błędem ${res.status} dla ${path}.`);

@@ -1,6 +1,6 @@
 // Szybki test modelu na wymyślonych danych (bez API): npm run test:model
 import { summarize, toTeamMatch } from '../lib/stats.ts';
-import { buildModel, hitRate, poissonPmf, pOver } from '../lib/model.ts';
+import { buildModel, hitRate, nbOver, poissonPmf, pOver } from '../lib/model.ts';
 import type { ApiFixture } from '../lib/types.ts';
 
 function fake(id: number, homeId: number, awayId: number, gh: number, ga: number, st: [number, number, number, number, number][]): ApiFixture {
@@ -43,6 +43,10 @@ const { model, markets, picks } = buildModel(hs, as);
 let ok = true;
 const check = (name: string, cond: boolean) => { console.log(`${cond ? '✓' : '✗'} ${name}`); if (!cond) ok = false; };
 
+check('NB z r=∞ to Poisson', Math.abs(nbOver(9.5, 10, Infinity) - pOver(9.5, 10)) < 1e-12);
+check('NB przy dużym r zbliża się do Poissona', Math.abs(nbOver(9.5, 10, 1e6) - pOver(9.5, 10)) < 1e-4);
+check('NB ma grubsze ogony (r=7, linia 7.5 przy średniej 10)', nbOver(7.5, 10, 7) < pOver(7.5, 10));
+check('NB sumuje się do 1 (ogon po 200 ≈ 0)', nbOver(200.5, 10, 7) < 1e-9);
 let sum = 0; for (let k = 0; k < 40; k++) sum += poissonPmf(k, 2.7);
 check('Poisson sumuje się do 1', Math.abs(sum - 1) < 1e-9);
 check('P(>2.5) dla λ=2.5 ≈ 0.456', Math.abs(pOver(2.5, 2.5) - 0.4562) < 0.001);

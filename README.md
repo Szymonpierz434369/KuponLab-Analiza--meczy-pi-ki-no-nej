@@ -43,6 +43,7 @@ Na Windowsie możesz też kliknąć dwa razy plik `KuponLab.bat` (albo jego kopi
 - **Analiza meczu**: szanse 1X2, oczekiwane gole, rożne, kartki i strzały celne, typy z najwyższą zgodnością, średnie obu drużyn, tabela 10 ostatnich meczów ze wszystkimi statystykami, mecze bezpośrednie i lista wszystkich zdarzeń.
 - **Kurs bukmachera**: wpisz go przy zdarzeniu. Aplikacja pokaże wartość (`szansa × kurs − 1`). Wartość dodatnia oznacza, że kurs jest wyższy niż wynika z modelu.
 - **Kupon**: dodawaj zdarzenia przyciskiem „+ Kupon”. Strona kuponu liczy łączną szansę, kurs fair, wartość i wypłatę z polskim podatkiem (12% od stawki, 10% od wygranej powyżej 2280 zł).
+- **Skuteczność**: zakładka, która sprawdza na rozegranych meczach z ostatnich 7–30 dni, ile „Typów z najwyższą zgodnością” weszło. Możesz filtrować po minimalnym kursie fair i rodzaju zdarzenia, a tabele pokazują skuteczność według rodzaju, typu, ligi i szansy z modelu (kalibrację). Pierwsze przeliczenie trwa 2–5 minut, potem liczone są tylko nowe mecze.
 - **Asystent AI**: na stronie meczu analizuje ten mecz; na stronie kuponu widzi Twój kupon i wszystkie nadchodzące mecze, które otworzyłeś w aplikacji, więc może z nich ułożyć kupon.
 
 ## Skąd są dane
@@ -58,7 +59,7 @@ Pobrane dane są zapisywane w lokalnej bazie `data/kuponlab.db`. Pierwsza analiz
 ## Jak działa model
 
 - **Bramki**: oczekiwana liczba goli gospodarzy to średnia z ich ataku (gole strzelone) i obrony rywala (gole stracone). Forma u siebie / na wyjeździe waży 40%, gdy drużyna ma co najmniej 3 takie mecze. Szanse wyników wynikają z rozkładu Poissona.
-- **Rożne, kartki, strzały celne**: tak samo, z średnich „za” i „przeciw” obu drużyn.
+- **Rożne, kartki, strzały**: średnia liczba z „za” i „przeciw” obu drużyn. Rożne i strzały celne mają większy rozrzut niż zakłada rozkład Poissona, więc dla nich model używa rozkładu ujemnego dwumianowego (parametry w `MODEL_CFG` w `lib/model.ts`, dobrane testem wstecznym). Kartki i wszystkie strzały liczone są rozkładem Poissona.
 - **Historia**: przy każdym zdarzeniu widać, ile razy wystąpiło w ostatnich meczach gospodarzy i gości, z perspektywy tego meczu (np. dla „wygranej gospodarzy” liczą się zwycięstwa gospodarzy i porażki gości).
 - **Typy z najwyższą zgodnością**: szansa z modelu 60–92% i co najmniej 60% trafień w historii obu drużyn.
 
@@ -73,6 +74,7 @@ app/                 strony i API (Next.js)
   page.tsx           lista meczów
   mecz/[id]/         analiza meczu
   kupon/             kupon
+  skutecznosc/       skuteczność typów (test wsteczny)
   api/analysis/[id]  przygotowanie analizy (strumień postępu)
   api/ai             asystent AI (Claude)
 components/          widoki: analiza, czat AI, kupon
@@ -80,7 +82,9 @@ lib/
   espn.ts            klient ESPN i mapowanie danych
   data.ts            pobieranie meczów i statystyk
   stats.ts           agregacja statystyk z 10 meczów
-  model.ts           model Poissona, zdarzenia, typy
+  model.ts           model (Poisson i ujemny dwumianowy), zdarzenia, typy
+  settle.ts          rozliczanie zdarzeń na faktycznym wyniku
+  backtest.ts        test wsteczny dla zakładki Skuteczność
   analysis.ts        składanie pełnej analizy
   db.ts              lokalna baza SQLite
   leagues.ts         lista lig
