@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import AiChat from '@/components/AiChat';
+import CouponTips from '@/components/CouponTips';
 import { useCoupon } from '@/components/CouponProvider';
 
 const pct = (x: number) => `${(x * 100).toFixed(x < 0.1 ? 1 : 0)}%`;
@@ -140,6 +141,8 @@ export default function CouponPage() {
           </p>
         </section>
       </div>
+
+      <CouponTips items={items} tax={tax} />
 
       <section className="card">
         <div className="card-head">

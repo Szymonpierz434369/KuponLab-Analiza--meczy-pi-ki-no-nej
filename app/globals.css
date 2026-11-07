@@ -217,3 +217,11 @@ table.tbl { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
 }
 main.wrap { padding-block: 24px 64px; }
 @media (max-width: 560px) { .nav a { padding: 6px 8px; } .brand { font-size: 1rem; } }
+
+/* Podpowiedzi do kuponu */
+.ok-box { border-left: 3px solid var(--good); background: var(--accent-soft); padding: 10px 14px; border-radius: 8px; }
+.tips { margin: 0; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 0.875rem; }
+.tips li { padding: 8px 12px; border-radius: 8px; background: var(--panel-2); border-left: 3px solid var(--muted); }
+.tips li.bad { border-left-color: var(--bad); }
+.tips li.warn { border-left-color: var(--warn); }
+details summary { color: var(--muted); }
