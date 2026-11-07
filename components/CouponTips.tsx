@@ -6,13 +6,15 @@ import type { CouponItem } from './CouponProvider';
 // Wyniki testu wstecznego (1448 typów z kursem fair ≥ 1,30, mecze 26.09–6.11.2026):
 // kupony z typów z różnych meczów tego samego dnia. Zaktualizuj po kolejnych testach.
 const BACKTEST = [
-  { n: 1, hit: 0.745, needPerLeg: 1.53 },
-  { n: 2, hit: 0.557, needPerLeg: 1.43 },
-  { n: 3, hit: 0.43, needPerLeg: 1.38 },
-  { n: 4, hit: 0.324, needPerLeg: 1.37 },
-  { n: 5, hit: 0.248, needPerLeg: 1.36 },
-  { n: 6, hit: 0.189, needPerLeg: 1.35 },
+  { n: 1, hit: 0.745 },
+  { n: 2, hit: 0.557 },
+  { n: 3, hit: 0.43 },
+  { n: 4, hit: 0.324 },
+  { n: 5, hit: 0.248 },
+  { n: 6, hit: 0.189 },
 ];
+/** minimalny średni kurs na zdarzenie, żeby kupon z n zdarzeń był na plus */
+const needPerLeg = (hit: number, n: number, taxF: number) => Math.pow(1 / (hit * taxF), 1 / n);
 
 const pct = (x: number) => `${(x * 100).toFixed(x < 0.1 ? 1 : 0)}%`;
 const zl = (x: number) => new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN', maximumFractionDigits: 2 }).format(x);
@@ -69,8 +71,10 @@ export default function CouponTips({ items, tax }: { items: CouponItem[]; tax: b
   const low = legs.filter((l) => l.state === 'low');
   if (low.length)
     tips.push({ level: 'bad', text: `Za niski kurs: ${low.map((l) => `${l.x.label} (${l.x.odds?.toFixed(2)}, potrzeba ≥ ${l.min.toFixed(2)})`).join('; ')}. Poszukaj lepszego kursu albo usuń to zdarzenie.` });
-  if (N === 1) tips.push({ level: 'warn', text: 'Pojedynczy zakład: podatek 12% obciąża jedno zdarzenie, więc potrzebny jest wysoki kurs. W teście najlepiej wypadały kupony z 3 zdarzeń.' });
-  if (N >= 5) tips.push({ level: 'warn', text: `${N} zdarzeń: kupon wejdzie mniej więcej raz na ${Math.max(2, Math.round(1 / P))} razy. Wymagany kurs na zdarzenie prawie już nie spada, a ryzyko długiej serii przegranych rośnie. Rozważ 3–4 zdarzenia.` });
+  if (tax && N === 1) tips.push({ level: 'warn', text: 'Pojedynczy zakład z podatkiem: 12% obciąża jedno zdarzenie, więc potrzebny jest wysoki kurs. Z podatkiem najlepiej wypadały kupony z 3 zdarzeń.' });
+  if (!tax && N >= 3) tips.push({ level: 'info', text: 'Bez podatku dłuższy kupon nie obniża progu opłacalności, a każde zdarzenie dokłada marżę bukmachera i ryzyko. Rozważ 1–2 zdarzenia. Przy grze bez podatku w Betclic, po przekroczeniu 1000 zł stawek, trzymaj się kuponów z min. 2 zdarzeniami po kursie ≥ 1,20.' });
+  if (tax && N >= 5) tips.push({ level: 'warn', text: `${N} zdarzeń: kupon wejdzie mniej więcej raz na ${Math.max(2, Math.round(1 / P))} razy. Wymagany kurs na zdarzenie prawie już nie spada, a ryzyko długiej serii przegranych rośnie. Rozważ 3–4 zdarzenia.` });
+  if (!tax && N >= 5) tips.push({ level: 'warn', text: `${N} zdarzeń: kupon wejdzie mniej więcej raz na ${Math.max(2, Math.round(1 / P))} razy.` });
   const safe = items.filter((x) => x.p > 0.85);
   if (safe.length)
     tips.push({ level: 'info', text: `„Pewniaki” (${safe.map((x) => x.label).join(', ')}) prawie nie podnoszą kursu, a każde zdarzenie dokłada marżę bukmachera i ryzyko niespodzianki.` });
@@ -174,24 +178,29 @@ export default function CouponTips({ items, tax }: { items: CouponItem[]; tax: b
               <tr>
                 <th className="l">Zdarzeń</th>
                 <th>Weszło</th>
-                <th title="Średni minimalny kurs bukmachera na zdarzenie, żeby wyjść na plus z podatkiem">Kurs na zdarzenie na plus</th>
+                <th title="Średni minimalny kurs bukmachera na zdarzenie, żeby wyjść na plus">Kurs na zdarzenie na plus {tax ? '(z podatkiem)' : '(bez podatku)'}</th>
               </tr>
             </thead>
             <tbody>
               {BACKTEST.map((r) => (
                 <tr key={r.n} className={r.n === Math.min(6, N) ? 'pick' : ''}>
-                  <td className="l">{r.n}{r.n === 3 ? ' (polecane)' : ''}</td>
+                  <td className="l">
+                    {r.n}
+                    {(tax ? r.n === 3 : r.n <= 2) ? ' (polecane)' : ''}
+                  </td>
                   <td>{pct(r.hit)}</td>
-                  <td>{r.needPerLeg.toFixed(2)}</td>
+                  <td>{needPerLeg(r.hit, r.n, taxF).toFixed(2)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
         <p className="tiny muted" style={{ marginBottom: 0 }}>
-          Typy z kursem fair ≥ 1,30 z różnych meczów, mecze 26.09–6.11.2026. Im więcej zdarzeń, tym lepiej rozkłada się podatek, ale kupon
-          wchodzi rzadziej. Powyżej 4 zdarzeń zysk na podatku jest już minimalny. Aktualną skuteczność typów sprawdzisz w zakładce
-          Skuteczność.
+          Typy z kursem fair ≥ 1,30 z różnych meczów, mecze 26.09–6.11.2026.{' '}
+          {tax
+            ? 'Z podatkiem im więcej zdarzeń, tym lepiej rozkłada się 12%, ale kupon wchodzi rzadziej. Powyżej 4 zdarzeń zysk na podatku jest już minimalny.'
+            : 'Bez podatku próg na zdarzenie jest prawie taki sam dla każdej długości kuponu, więc krótsze kupony są bezpieczniejsze.'}{' '}
+          Aktualną skuteczność typów sprawdzisz w zakładce Skuteczność.
         </p>
       </details>
 

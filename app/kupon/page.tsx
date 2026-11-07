@@ -19,6 +19,20 @@ export default function CouponPage() {
   const [tax, setTax] = useState(true);
   const [analyses, setAnalyses] = useState<unknown[]>([]);
 
+  // zapamiętujemy, czy liczyć z podatkiem (np. bez podatku w promocji Betclic)
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem('kuponlab-podatek');
+      if (v !== null) setTax(v === '1');
+    } catch {}
+  }, []);
+  const changeTax = (v: boolean) => {
+    setTax(v);
+    try {
+      localStorage.setItem('kuponlab-podatek', v ? '1' : '0');
+    } catch {}
+  };
+
   useEffect(() => {
     fetch('/api/analyses')
       .then((r) => r.json())
@@ -109,7 +123,7 @@ export default function CouponPage() {
             <input id="stake" inputMode="decimal" value={stake} onChange={(e) => setStake(e.target.value)} style={{ width: 90 }} />
             <span className="small muted">zł</span>
             <label className="small row" style={{ gap: 6 }}>
-              <input id="tax" type="checkbox" checked={tax} onChange={(e) => setTax(e.target.checked)} /> podatek PL
+              <input id="tax" type="checkbox" checked={tax} onChange={(e) => changeTax(e.target.checked)} /> podatek PL
             </label>
           </div>
           {totalOdds ? (

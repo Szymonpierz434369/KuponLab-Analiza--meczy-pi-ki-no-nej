@@ -16,7 +16,6 @@ interface Flat extends BacktestPick {
   score: string;
 }
 
-const TAX = 0.88;
 const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
 const fmtDate = (iso: string) =>
   new Intl.DateTimeFormat('pl-PL', { timeZone: 'Europe/Warsaw', day: '2-digit', month: '2-digit' }).format(new Date(iso));
@@ -43,6 +42,7 @@ export default function SkutecznoscPage() {
   const [days, setDays] = useState(21);
   const [minFair, setMinFair] = useState(1.3);
   const [group, setGroup] = useState('Wszystkie');
+  const [tax, setTax] = useState(true);
   const [load, setLoad] = useState<Load>({ kind: 'loading', done: 0, total: 1, step: 'Łączę się' });
   const [reload, setReload] = useState(0);
 
@@ -89,7 +89,7 @@ export default function SkutecznoscPage() {
   const groups = useMemo(() => ['Wszystkie', ...new Set(all.map((x) => x.group))], [all]);
   const list = all.filter((x) => x.fair >= minFair && (group === 'Wszystkie' || x.group === group));
   const s = stats(list);
-  const needOdds = s.rate > 0 ? 1 / (s.rate * TAX) : null;
+  const needOdds = s.rate > 0 ? 1 / (s.rate * (tax ? 0.88 : 1)) : null;
   const matches = load.kind === 'ready' ? load.rows.length : 0;
   const bucket = (x: Flat) => (x.p < 0.65 ? '60–65%' : x.p < 0.7 ? '65–70%' : x.p < 0.75 ? '70–75%' : x.p < 0.8 ? '75–80%' : x.p < 0.85 ? '80–85%' : '85%+');
 
@@ -127,6 +127,9 @@ export default function SkutecznoscPage() {
               <option key={g} value={g}>{g}</option>
             ))}
           </select>
+        </label>
+        <label className="small row" style={{ gap: 6 }}>
+          <input id="bt-tax" type="checkbox" checked={tax} onChange={(e) => setTax(e.target.checked)} /> podatek 12%
         </label>
         <button className="btn small" onClick={() => setReload((x) => x + 1)} disabled={load.kind === 'loading'}>
           Odśwież
@@ -172,12 +175,12 @@ export default function SkutecznoscPage() {
               </div>
               <div className="kpi">
                 <div className="v">{needOdds ? needOdds.toFixed(2) : '–'}</div>
-                <div className="l">Kurs na plus (z podatkiem)</div>
+                <div className="l">Kurs na plus ({tax ? 'z podatkiem' : 'bez podatku'})</div>
               </div>
             </div>
             <p className="tiny muted" style={{ margin: 0 }}>
               {matches} meczów, {s.n} typów po filtrach. „Kurs na plus” to minimalny średni kurs bukmachera, przy którym przy tej
-              skuteczności i podatku 12% wychodzisz na plus. Przy kilkuset typach wynik może się wahać o ok. ±3 punkty procentowe.
+              skuteczności wychodzisz na plus{tax ? ' (z podatkiem 12%)' : ' (bez podatku, np. promocja Betclic)'}. Przy kilkuset typach wynik może się wahać o ok. ±3 punkty procentowe.
             </p>
           </section>
 
