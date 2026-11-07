@@ -60,6 +60,8 @@ Pobrane dane są zapisywane w lokalnej bazie `data/kuponlab.db`. Pierwsza analiz
 
 - **Bramki**: oczekiwana liczba goli gospodarzy to średnia z ich ataku (gole strzelone) i obrony rywala (gole stracone). Forma u siebie / na wyjeździe waży 40%, gdy drużyna ma co najmniej 3 takie mecze. Szanse wyników wynikają z rozkładu Poissona.
 - **Rożne, kartki, strzały**: średnia liczba z „za” i „przeciw” obu drużyn. Rożne i strzały celne mają większy rozrzut niż zakłada rozkład Poissona, więc dla nich model używa rozkładu ujemnego dwumianowego (parametry w `MODEL_CFG` w `lib/model.ts`, dobrane testem wstecznym). Kartki i wszystkie strzały liczone są rozkładem Poissona.
+- **Faule**: zdarzenia „faule łącznie powyżej/poniżej” i faule każdej drużyny (rozkład ujemny dwumianowy).
+- **Sędzia**: ESPN nie podaje sędziów, więc na stronie meczu można ręcznie wpisać średnią żółtych kartek i fauli sędziego na mecz. Kartki i faule liczone są wtedy pół na pół z drużyn i z sędziego (waga 50% to założenie, nieprzetestowane).
 - **Historia**: przy każdym zdarzeniu widać, ile razy wystąpiło w ostatnich meczach gospodarzy i gości, z perspektywy tego meczu (np. dla „wygranej gospodarzy” liczą się zwycięstwa gospodarzy i porażki gości).
 - **Typy z najwyższą zgodnością**: szansa z modelu 60–92% i co najmniej 60% trafień w historii obu drużyn.
 

@@ -56,6 +56,10 @@ export function compactForAi(a: MatchAnalysis) {
       oczekiwane_rozne: r1(a.model.expected.corners.total),
       oczekiwane_zolte: r1(a.model.expected.yellow.total),
       oczekiwane_celne: r1(a.model.expected.sot.total),
+      oczekiwane_faule: r1(a.model.expected.fouls?.total ?? 0),
+      sedzia: a.model.referee && (a.model.referee.yellow || a.model.referee.fouls)
+        ? `uwzględniono średnie sędziego (wpisane przez użytkownika): ${a.model.referee.yellow ?? '–'} żółtych, ${a.model.referee.fouls ?? '–'} fauli na mecz`
+        : 'brak danych o sędzim – kartki i faule tylko ze statystyk drużyn',
       uwaga: a.model.dataWarning,
     },
     typy_aplikacji: a.picks.map((id) => marketLine(a.markets.find((m) => m.id === id)!)),

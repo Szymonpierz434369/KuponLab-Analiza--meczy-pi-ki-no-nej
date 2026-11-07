@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { MatchAnalysis } from '@/lib/analysis';
 import { compactForAi } from '@/lib/aiContext';
-import { hitRate, type Market, type MarketGroup } from '@/lib/model';
+import { buildModel, hitRate, type Market, type MarketGroup, type RefereeInput } from '@/lib/model';
 import { STAT_LABELS, type StatKey, type TeamSummary } from '@/lib/stats';
 import AiChat from './AiChat';
 import { useCoupon } from './CouponProvider';
@@ -99,7 +99,36 @@ function Form({ t }: { t: TeamSummary }) {
   );
 }
 
-function Analysis({ a }: { a: MatchAnalysis }) {
+const num = (s: string) => {
+  const n = parseFloat(s.replace(',', '.'));
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+function Analysis({ a: base }: { a: MatchAnalysis }) {
+  // Średnie sędziego wpisane ręcznie – model przeliczamy w przeglądarce
+  const refKey = `kuponlab-sedzia-${base.fixture.id}`;
+  const [refY, setRefY] = useState('');
+  const [refF, setRefF] = useState('');
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(refKey) ?? '{}');
+      setRefY(saved.y ?? '');
+      setRefF(saved.f ?? '');
+    } catch {}
+  }, [refKey]);
+  const saveRef = (y: string, f: string) => {
+    setRefY(y);
+    setRefF(f);
+    try {
+      localStorage.setItem(refKey, JSON.stringify({ y, f }));
+    } catch {}
+  };
+  const referee: RefereeInput = { yellow: num(refY), fouls: num(refF) };
+  const a = useMemo(() => {
+    if (!referee.yellow && !referee.fouls) return base;
+    return { ...base, ...buildModel(base.home, base.away, { referee }) };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [base, referee.yellow, referee.fouls]);
   const { home: H, away: A, model } = a;
   const byId = useMemo(() => new Map(a.markets.map((m) => [m.id, m])), [a.markets]);
   const picks = a.picks.map((id) => byId.get(id)!).filter(Boolean);
@@ -148,6 +177,8 @@ function Analysis({ a }: { a: MatchAnalysis }) {
 
       {model.dataWarning && <div className="warn small">{model.dataWarning}</div>}
 
+      <RefereeCard a={base} y={refY} f={refF} onChange={saveRef} />
+
       <section className="card stack">
         <div className="card-head">
           <h2>Szanse według modelu</h2>
@@ -165,6 +196,7 @@ function Analysis({ a }: { a: MatchAnalysis }) {
           {byId.has('c-o9.5') && <Kpi v={f1(model.expected.corners.total)} l="Rożne (oczek.)" />}
           {byId.has('y-o3.5') && <Kpi v={f1(model.expected.yellow.total)} l="Żółte (oczek.)" />}
           {byId.has('s-o8.5') && <Kpi v={f1(model.expected.sot.total)} l="Celne (oczek.)" />}
+          {byId.has('f-o23.5') && <Kpi v={f1(model.expected.fouls.total)} l="Faule (oczek.)" />}
         </div>
         <div className="row small">
           <span className="muted">Najbardziej prawdopodobne wyniki:</span>
@@ -239,6 +271,40 @@ function Analysis({ a }: { a: MatchAnalysis }) {
         />
       </section>
     </div>
+  );
+}
+
+function RefereeCard({ a, y, f, onChange }: { a: MatchAnalysis; y: string; f: string; onChange: (y: string, f: string) => void }) {
+  const teamsY = (a.home.stats.yellow.avgFor + a.away.stats.yellow.avgAgainst) / 2 + (a.away.stats.yellow.avgFor + a.home.stats.yellow.avgAgainst) / 2;
+  const teamsF = (a.home.stats.fouls.avgFor + a.away.stats.fouls.avgAgainst) / 2 + (a.away.stats.fouls.avgFor + a.home.stats.fouls.avgAgainst) / 2;
+  const active = !!(num(y) || num(f));
+  return (
+    <section className="card stack">
+      <div className="card-head" style={{ marginBottom: 0 }}>
+        <h2>Sędzia</h2>
+        <span className={`tiny ${active ? 'val-pos' : 'muted'}`}>{active ? 'uwzględniony w kartkach i faulach' : 'nieuwzględniony'}</span>
+      </div>
+      <p className="small muted" style={{ margin: 0 }}>
+        {a.fixture.referee ? `Sędzia: ${a.fixture.referee}. ` : 'ESPN nie podaje sędziów, więc model domyślnie liczy kartki i faule tylko ze statystyk drużyn. '}
+        Wpisz średnie sędziego z ostatnich meczów (np. ze Sofascore, WhoScored albo worldfootball.net), a kartki i faule przeliczą
+        się jako średnia: połowa z drużyn, połowa z sędziego.
+      </p>
+      <div className="row small">
+        <label htmlFor="ref-y">Żółte kartki na mecz</label>
+        <input id="ref-y" inputMode="decimal" className="odds" placeholder={teamsY.toFixed(1)} value={y} onChange={(e) => onChange(e.target.value, f)} />
+        <label htmlFor="ref-f">Faule na mecz</label>
+        <input id="ref-f" inputMode="decimal" className="odds" placeholder={teamsF.toFixed(1)} value={f} onChange={(e) => onChange(y, e.target.value)} />
+        {active && (
+          <button type="button" className="btn small" onClick={() => onChange('', '')}>
+            Wyczyść
+          </button>
+        )}
+      </div>
+      <p className="tiny muted" style={{ margin: 0 }}>
+        W polach widać średnie wynikające z samych drużyn ({teamsY.toFixed(1)} kartki, {teamsF.toFixed(1)} fauli). Waga sędziego 50% to
+        założenie: bez danych o sędziach nie dało się jej sprawdzić testem wstecznym.
+      </p>
+    </section>
   );
 }
 

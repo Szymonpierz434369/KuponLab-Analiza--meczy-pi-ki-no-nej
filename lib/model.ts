@@ -43,19 +43,28 @@ export function nbOver(line: number, mu: number, r: number): number {
 }
 
 /** Wersja modelu – zmień ją po każdej zmianie obliczeń (zakładka Skuteczność przeliczy wtedy historię). */
-export const MODEL_VERSION = 2;
+export const MODEL_VERSION = 3;
 
 /**
  * Parametry modelu. `dispersion` = r rozkładu ujemnego dwumianowego dla każdej statystyki
  * (mniejsze r = większy rozrzut, Infinity = Poisson). Dobrane testem wstecznym na ok. 430
- * meczach z 17.10–6.11.2026 (najniższy błąd Briera): rożne mają duży rozrzut, strzały celne
- * umiarkowany, a dla kartek i wszystkich strzałów Poisson wypadał najlepiej.
+ * meczach z 17.10–6.11.2026 i sprawdzone na 174 meczach z 26.09–16.10 (błąd Briera, kalibracja):
+ * rożne mają duży rozrzut, strzały celne umiarkowany, faule mały, a dla kartek i wszystkich
+ * strzałów Poisson wypadał najlepiej.
  */
 export const MODEL_CFG = {
-  dispersion: { corners: 7, yellow: Infinity, sot: 15, shots: Infinity } as Record<'corners' | 'yellow' | 'sot' | 'shots', number>,
+  dispersion: { corners: 7, yellow: Infinity, sot: 15, shots: Infinity, fouls: 40 } as Record<'corners' | 'yellow' | 'sot' | 'shots' | 'fouls', number>,
+  /** Jaką wagę ma średnia sędziego wobec średniej drużyn (0–1). Założenie – ESPN nie podaje sędziów, więc nie dało się jej przetestować. */
+  refereeWeight: 0.5,
 };
 
-export type MarketGroup = 'Wynik' | 'Bramki' | 'Rożne' | 'Kartki' | 'Strzały celne' | 'Strzały';
+/** Średnie sędziego wpisane ręcznie na stronie meczu (na mecz, obie drużyny łącznie). */
+export interface RefereeInput {
+  yellow?: number | null;
+  fouls?: number | null;
+}
+
+export type MarketGroup = 'Wynik' | 'Bramki' | 'Rożne' | 'Kartki' | 'Faule' | 'Strzały celne' | 'Strzały';
 
 export interface Market {
   id: string;
@@ -73,7 +82,9 @@ export interface ModelOutput {
   goalsFromXg: boolean;
   outcome: { home: number; draw: number; away: number };
   scores: { h: number; a: number; p: number }[];
-  expected: Record<'corners' | 'yellow' | 'sot' | 'shots' | 'red', { home: number; away: number; total: number }>;
+  expected: Record<'corners' | 'yellow' | 'sot' | 'shots' | 'red' | 'fouls', { home: number; away: number; total: number }>;
+  /** czy uwzględniono średnie sędziego */
+  referee: { yellow: number | null; fouls: number | null };
   htShare: number;
   dataWarning: string | null;
 }
@@ -110,7 +121,11 @@ const clampL = (x: number) => Math.max(0.1, x);
 const sumStat = (v: View, key: StatKey) => (v.stats && v.h[key] !== null && v.a[key] !== null ? (v.h[key] as number) + (v.a[key] as number) : null);
 const sideStat = (v: View, side: 'h' | 'a', key: StatKey) => (v.stats && v[side][key] !== null ? (v[side][key] as number) : null);
 
-export function buildModel(H: TeamSummary, A: TeamSummary): { model: ModelOutput; markets: Market[]; picks: string[] } {
+export function buildModel(
+  H: TeamSummary,
+  A: TeamSummary,
+  opts: { referee?: RefereeInput } = {},
+): { model: ModelOutput; markets: Market[]; picks: string[] } {
   // --- Gole ---
   const hAtt = blend(H.goals.avgFor, H.goals.home.avgFor, H.goals.home.n);
   const hDef = blend(H.goals.avgAgainst, H.goals.home.avgAgainst, H.goals.home.n);
@@ -160,7 +175,17 @@ export function buildModel(H: TeamSummary, A: TeamSummary): { model: ModelOutput
     return { home, away, total: home + away };
   };
   const corners = exp('corners');
-  const yellow = exp('yellow');
+  // Sędzia: łączna średnia jest mieszana ze średnią drużyn, a podział gospodarze/goście zostaje z drużyn
+  const ref = opts.referee ?? {};
+  const withReferee = (e: { home: number; away: number; total: number }, refAvg: number | null | undefined) => {
+    if (!refAvg || refAvg <= 0 || e.total <= 0) return e;
+    const w = MODEL_CFG.refereeWeight;
+    const total = (1 - w) * e.total + w * refAvg;
+    const k = total / e.total;
+    return { home: e.home * k, away: e.away * k, total };
+  };
+  const yellow = withReferee(exp('yellow'), ref.yellow);
+  const fouls = withReferee(exp('fouls'), ref.fouls);
   const sot = exp('sot');
   const shots = exp('shots');
   const red = { home: H.stats.red.avgFor, away: A.stats.red.avgFor, total: (H.stats.red.avgTotal + A.stats.red.avgTotal) / 2 };
@@ -236,6 +261,20 @@ export function buildModel(H: TeamSummary, A: TeamSummary): { model: ModelOutput
       add(`as-o${line}`, 'Strzały celne', 'as-over', `${A.team.name}: celne powyżej ${line}`, nbOver(line, sot.away, D.sot), (v) => { const s = sideStat(v, 'a', 'sot'); return s === null ? null : s > line; });
     }
 
+    // Faule
+    if (H.stats.fouls.n >= 3 && A.stats.fouls.n >= 3) {
+      for (const line of [19.5, 21.5, 23.5, 25.5, 27.5]) {
+        add(`f-o${line}`, 'Faule', 'f-over', `Faule łącznie powyżej ${line}`, nbOver(line, fouls.total, D.fouls), (v) => { const s = sumStat(v, 'fouls'); return s === null ? null : s > line; });
+      }
+      for (const line of [21.5, 23.5, 25.5]) {
+        add(`f-u${line}`, 'Faule', 'f-under', `Faule łącznie poniżej ${line}`, 1 - nbOver(line, fouls.total, D.fouls), (v) => { const s = sumStat(v, 'fouls'); return s === null ? null : s < line; });
+      }
+      for (const line of [9.5, 10.5, 11.5, 12.5, 13.5]) {
+        add(`hf-o${line}`, 'Faule', 'hf-over', `${H.team.name}: faule powyżej ${line}`, nbOver(line, fouls.home, D.fouls), (v) => { const s = sideStat(v, 'h', 'fouls'); return s === null ? null : s > line; });
+        add(`af-o${line}`, 'Faule', 'af-over', `${A.team.name}: faule powyżej ${line}`, nbOver(line, fouls.away, D.fouls), (v) => { const s = sideStat(v, 'a', 'fouls'); return s === null ? null : s > line; });
+      }
+    }
+
     // Strzały (wszystkie)
     for (const line of [19.5, 21.5, 23.5, 25.5]) {
       add(`sh-o${line}`, 'Strzały', 'sh-over', `Strzały łącznie powyżej ${line}`, nbOver(line, shots.total, D.shots), (v) => { const s = sumStat(v, 'shots'); return s === null ? null : s > line; });
@@ -255,7 +294,8 @@ export function buildModel(H: TeamSummary, A: TeamSummary): { model: ModelOutput
       goalsFromXg: xgOk,
       outcome: { home: pH, draw: pD, away: pA },
       scores: scores.slice(0, 8),
-      expected: { corners, yellow, sot, shots, red },
+      expected: { corners, yellow, sot, shots, red, fouls },
+      referee: { yellow: ref.yellow && ref.yellow > 0 ? ref.yellow : null, fouls: ref.fouls && ref.fouls > 0 ? ref.fouls : null },
       htShare,
       dataWarning,
     },

@@ -2,7 +2,7 @@ import { toTeamMatch } from './stats';
 import type { ApiFixture } from './types';
 
 type Side = 'h' | 'a' | 't';
-type Key = 'corners' | 'yellow' | 'red' | 'sot' | 'shots';
+type Key = 'corners' | 'yellow' | 'red' | 'sot' | 'shots' | 'fouls';
 
 /**
  * Rozlicza zdarzenie (id z lib/model.ts) na faktycznym wyniku zakończonego meczu.
@@ -58,6 +58,10 @@ export function settleMarket(id: string, T: ApiFixture): boolean | null {
     'hs-o': () => cmp(stat('sot', 'h'), 'o'),
     'as-o': () => cmp(stat('sot', 'a'), 'o'),
     'sh-o': () => cmp(stat('shots', 't'), 'o'),
+    'f-o': () => cmp(stat('fouls', 't'), 'o'),
+    'f-u': () => cmp(stat('fouls', 't'), 'u'),
+    'hf-o': () => cmp(stat('fouls', 'h'), 'o'),
+    'af-o': () => cmp(stat('fouls', 'a'), 'o'),
   };
   return rules[prefix] ? rules[prefix]() : null;
 }
