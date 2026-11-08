@@ -88,8 +88,8 @@ export default function CouponTips({ items, tax }: { items: CouponItem[]; tax: b
     ev === null
       ? { cls: 'warn', text: `Kupon opłaca się, jeśli jego łączny kurs wyniesie co najmniej ${needTotal.toFixed(2)}.` }
       : ev > 0
-        ? { cls: 'good', text: `Kupon ma dodatnią wartość: +${(ev * 100).toFixed(1)}% (po podatku). Kurs ${O!.toFixed(2)} przy potrzebnym ${needTotal.toFixed(2)}.` }
-        : { cls: 'err', text: `Kupon jest na minus: ${(ev * 100).toFixed(1)}% (po podatku). Kurs ${O!.toFixed(2)}, a potrzeba co najmniej ${needTotal.toFixed(2)}. Przy tych kursach lepiej go nie grać.` };
+        ? { cls: 'good', text: `Kupon ma dodatnią wartość: +${(ev * 100).toFixed(1)}% (${tax ? 'po podatku' : 'bez podatku'}). Kurs ${O!.toFixed(2)} przy potrzebnym ${needTotal.toFixed(2)}.` }
+        : { cls: 'err', text: `Kupon jest na minus: ${(ev * 100).toFixed(1)}% (${tax ? 'po podatku' : 'bez podatku'}). Kurs ${O!.toFixed(2)}, a potrzeba co najmniej ${needTotal.toFixed(2)}. Przy tych kursach lepiej go nie grać.` };
 
   return (
     <section className="card stack">
