@@ -213,7 +213,7 @@ function Analysis({ a: base }: { a: MatchAnalysis }) {
       <section className="card">
         <div className="card-head">
           <h2>Typy z najwyższą zgodnością</h2>
-          <span className="tiny muted">model ≥ 60% i zdarzenie wystąpiło w ≥ 60% ostatnich meczów obu drużyn</span>
+          <span className="tiny muted">model 65–88% i zdarzenie wystąpiło w ≥ 60% ostatnich meczów obu drużyn</span>
         </div>
         {picks.length === 0 ? (
           <p className="muted small">Brak zdarzeń, w których model i historia wyraźnie się zgadzają. To też informacja: ten mecz lepiej sobie odpuścić albo grać pojedynczo po wartość.</p>

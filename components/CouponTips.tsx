@@ -7,7 +7,7 @@ import type { CouponItem } from './CouponProvider';
 
 // Zapasowa trafność pojedynczego typu (kurs fair ≥ 1,25), gdy zakładka Skuteczność nie była jeszcze
 // przeliczona dla tej wersji modelu. Wartość z testu wstecznego – zob. README.
-const FALLBACK_HIT = 0.774;
+const FALLBACK_HIT = 0.803;
 /** minimalny średni kurs na zdarzenie, żeby kupon z n zdarzeń był na plus */
 const needPerLeg = (hit: number, n: number, taxF: number) => Math.pow(1 / (hit * taxF), 1 / n);
 

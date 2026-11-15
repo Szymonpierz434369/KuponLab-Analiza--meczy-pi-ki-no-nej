@@ -43,7 +43,7 @@ export function nbOver(line: number, mu: number, r: number): number {
 }
 
 /** Wersja modelu – zmień ją po każdej zmianie obliczeń (zakładka Skuteczność przeliczy wtedy historię). */
-export const MODEL_VERSION = 4;
+export const MODEL_VERSION = 5;
 
 /**
  * Parametry modelu. `dispersion` = r rozkładu ujemnego dwumianowego dla każdej statystyki
@@ -72,8 +72,12 @@ export const MODEL_CFG = {
   histN: 0,
   /** wagi czasowe w historii „ile razy weszło” (1 = wszystkie mecze równo) */
   histDecay: 1,
-  /** progi wyboru „Typów z najwyższą zgodnością” */
-  picks: { pMin: 0.6, pMax: 0.92, histMin: 0.6, target: 0.72, wModel: 0.6, perGroup: 2, max: 6 },
+  /**
+   * Progi wyboru „Typów z najwyższą zgodnością”. Dobrane testem na 1355 meczach (1.08–8.11.2026):
+   * dobór na meczach do 9.10, sprawdzenie na meczach od 10.10. Trafność typów z kursem fair ≥ 1,25:
+   * 79,2% → 80,3% przy tym samym średnim kursie fair (1,32). Wcześniej: 0.6 / 0.92 / 0.6 / 0.72 / 0.6.
+   */
+  picks: { pMin: 0.65, pMax: 0.88, histMin: 0.6, target: 0.76, wModel: 0.4, perGroup: 2, max: 6 },
 };
 
 const logit = (p: number) => Math.log(p / (1 - p));
@@ -381,9 +385,10 @@ export function hitRate(m: Market): number | null {
 }
 
 /**
- * Typy z najwyższą zgodnością modelu i historii: szansa 60–92%, a w ostatnich
+ * Typy z najwyższą zgodnością modelu i historii: szansa 65–88%, a w ostatnich
  * meczach obu drużyn zdarzenie wystąpiło w co najmniej 60% przypadków.
- * Z każdej rodziny (np. „rożne powyżej”) bierzemy jedną linię – najbliższą 72%.
+ * Z każdej rodziny (np. „rożne powyżej”) bierzemy jedną linię – najbliższą 76%.
+ * Kolejność: 40% szansa z modelu, 60% trafność w historii.
  */
 export function choosePicks(markets: Market[]): string[] {
   const P = MODEL_CFG.picks;

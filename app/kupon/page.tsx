@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import AiChat from '@/components/AiChat';
 import CouponTips from '@/components/CouponTips';
 import { useCoupon } from '@/components/CouponProvider';
+import { couponLinks } from '@/lib/correlation';
 
 const pct = (x: number) => `${(x * 100).toFixed(x < 0.1 ? 1 : 0)}%`;
 const zl = (x: number) => new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN' }).format(x);
@@ -41,7 +42,11 @@ export default function CouponPage() {
       .catch(() => setAnalyses([]));
   }, []);
 
-  const pAll = items.reduce((acc, x) => acc * x.p, 1);
+  // zdarzenia z jednego meczu bywają powiązane – wtedy szansa kuponu to nie zwykły iloczyn
+  const links = couponLinks(items);
+  const pProduct = items.reduce((acc, x) => acc * x.p, 1);
+  const pAll = items.length ? Math.min(pProduct * links.factor, Math.min(...items.map((x) => x.p))) : 1;
+  const linked = Math.abs(links.factor - 1) >= 0.03;
   const allOdds = items.length > 0 && items.every((x) => x.odds && x.odds > 1);
   const totalOdds = allOdds ? items.reduce((acc, x) => acc * (x.odds as number), 1) : null;
   const ev = totalOdds ? pAll * totalOdds - 1 : null;
@@ -170,8 +175,10 @@ export default function CouponPage() {
             <div className="stack small" style={{ gap: 6 }}>
               {sameMatch && (
                 <div className="warn">
-                  Na kuponie są co najmniej dwa zdarzenia z jednego meczu. Są od siebie zależne, więc łączna szansa może się różnić od
-                  wyliczonej.
+                  Na kuponie są co najmniej dwa zdarzenia z jednego meczu. Są od siebie zależne
+                  {linked
+                    ? `: szansa uwzględnia to, jak często takie zdarzenia wchodziły razem (zwykły iloczyn: ${pct(pProduct)}).`
+                    : ', więc łączna szansa może się różnić od wyliczonej.'}
                 </div>
               )}
               {items.length >= 5 && (
@@ -183,7 +190,7 @@ export default function CouponPage() {
             </div>
           )}
           <p className="tiny muted" style={{ margin: 0 }}>
-            Szansa kuponu to iloczyn szans zdarzeń. Wartość dodatnia oznacza, że kurs jest wyższy niż wynika z modelu.
+            Szansa kuponu to iloczyn szans zdarzeń (dla zdarzeń z jednego meczu poprawiony o ich powiązanie). Wartość dodatnia oznacza, że kurs jest wyższy niż wynika z modelu.
           </p>
         </section>
       </div>
