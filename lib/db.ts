@@ -104,6 +104,12 @@ export function backtestSave(fixtureId: number, kickoff: string, version: number
   ).run(fixtureId, kickoff, version, JSON.stringify(row));
 }
 
+/** Zapisane wyniki testu wstecznego (bez przeliczania), od daty `since`. */
+export function backtestSince(version: number, since: string): unknown[] {
+  const rows = db.prepare('select row from backtest where model_version = ? and kickoff >= ?').all(version, since) as { row: string }[];
+  return rows.map((r) => JSON.parse(r.row));
+}
+
 export interface JournalRow {
   id: number;
   created_at: string;
@@ -121,6 +127,10 @@ export function journalAdd(stake: number, tax: boolean, items: unknown): number 
 
 export function journalList(): JournalRow[] {
   return db.prepare('select * from journal order by created_at desc').all() as JournalRow[];
+}
+
+export function journalSetItems(id: number, items: unknown) {
+  db.prepare('update journal set items = ? where id = ?').run(JSON.stringify(items), id);
 }
 
 export function journalDelete(id: number) {

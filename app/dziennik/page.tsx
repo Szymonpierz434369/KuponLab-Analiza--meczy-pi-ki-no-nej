@@ -42,6 +42,9 @@ export default function JournalPage() {
   const legModel = legs.length ? legs.reduce((a, i) => a + i.p, 0) / legs.length : 0;
   const expWins = settled.filter((e) => e.status !== 'void').reduce((a, e) => a + e.items.reduce((x, i) => x * (i.status === 'void' ? 1 : i.p), 1), 0);
   const pending = (entries ?? []).filter((e) => e.status === 'pending');
+  // przewaga nad rynkiem: Twój kurs × szansa rynku bez marży (z kursu zamknięcia) − 1
+  const withClose = (entries ?? []).flatMap((e) => e.items).filter((i) => i.closing);
+  const clv = withClose.length ? withClose.reduce((a, i) => a + i.odds * (i.closing as { fairP: number }).fairP - 1, 0) / withClose.length : null;
 
   return (
     <div className="stack">
@@ -84,11 +87,20 @@ export default function JournalPage() {
                 <div className="v">{legs.length ? pct(legHit) : '–'}</div>
                 <div className="l">Trafione zdarzenia (model {legs.length ? pct(legModel) : '–'})</div>
               </div>
+              <div className="kpi">
+                <div className={`v ${clv === null ? '' : clv >= 0 ? 'val-pos' : 'val-neg'}`}>
+                  {clv === null ? '–' : `${clv >= 0 ? '+' : ''}${(clv * 100).toFixed(1)}%`}
+                </div>
+                <div className="l">Przewaga nad kursem zamknięcia ({withClose.length})</div>
+              </div>
             </div>
             <p className="tiny muted" style={{ margin: 0 }}>
               Postawione {zl(staked)}, wypłaty {zl(paid)}. W toku: {pending.length}{' '}
               {pending.length === 1 ? 'kupon' : 'kupony'} za {zl(pending.reduce((a, e) => a + e.stake, 0))}. Gdy zdarzenia wchodzą
               częściej niż zakłada model, a wynik jest na plus, model i Twój wybór kursów działają. Wnioski wyciągaj po 30–50 kuponach.
+              {' '}„Przewaga nad kursem zamknięcia” porównuje Twój kurs z ostatnim kursem DraftKings przed meczem (bez marży). Jeśli
+              regularnie jest na plus, dobrze wybierasz zdarzenia i kursy, nawet gdy wynik chwilowo jest na minus. ESPN podaje taki kurs
+              tylko dla 1X2 i jednej linii goli, więc dla rożnych, kartek czy fauli go nie ma.
             </p>
           </section>
 
@@ -153,7 +165,17 @@ export default function JournalPage() {
                             </td>
                             <td>{i.odds.toFixed(2)}</td>
                             <td>{pct(i.p)}</td>
-                            <td />
+                            <td className="tiny">
+                              {i.closing ? (
+                                <span title="Kurs zamknięcia DraftKings i Twoja przewaga nad nim (bez marży)">
+                                  zamkn. {i.closing.odds.toFixed(2)}{' '}
+                                  <span className={i.odds * i.closing.fairP >= 1 ? 'val-pos' : 'val-neg'}>
+                                    ({i.odds * i.closing.fairP >= 1 ? '+' : ''}
+                                    {((i.odds * i.closing.fairP - 1) * 100).toFixed(1)}%)
+                                  </span>
+                                </span>
+                              ) : null}
+                            </td>
                             <td>{LABEL[i.status]}</td>
                             <td />
                           </tr>

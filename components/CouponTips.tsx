@@ -1,18 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import type { LegStats } from '@/lib/backtest';
+import { couponLinks } from '@/lib/correlation';
 import type { CouponItem } from './CouponProvider';
 
-// Wyniki testu wstecznego (1448 typów z kursem fair ≥ 1,30, mecze 26.09–6.11.2026):
-// kupony z typów z różnych meczów tego samego dnia. Zaktualizuj po kolejnych testach.
-const BACKTEST = [
-  { n: 1, hit: 0.745 },
-  { n: 2, hit: 0.557 },
-  { n: 3, hit: 0.43 },
-  { n: 4, hit: 0.324 },
-  { n: 5, hit: 0.248 },
-  { n: 6, hit: 0.189 },
-];
+// Zapasowa trafność pojedynczego typu (kurs fair ≥ 1,25), gdy zakładka Skuteczność nie była jeszcze
+// przeliczona dla tej wersji modelu. Wartość z testu wstecznego – zob. README.
+const FALLBACK_HIT = 0.774;
 /** minimalny średni kurs na zdarzenie, żeby kupon z n zdarzeń był na plus */
 const needPerLeg = (hit: number, n: number, taxF: number) => Math.pow(1 / (hit * taxF), 1 / n);
 
@@ -24,10 +19,15 @@ type Tip = { level: 'bad' | 'warn' | 'info'; text: string };
 
 export default function CouponTips({ items, tax }: { items: CouponItem[]; tax: boolean }) {
   const [bank, setBank] = useState('');
+  const [legStats, setLegStats] = useState<LegStats | null>(null);
   useEffect(() => {
     try {
       setBank(localStorage.getItem(BANK_KEY) ?? '');
     } catch {}
+    fetch('/api/skutecznosc/podsumowanie', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => setLegStats(d.stats ?? null))
+      .catch(() => {});
   }, []);
   const saveBank = (v: string) => {
     setBank(v);
@@ -41,7 +41,10 @@ export default function CouponTips({ items, tax }: { items: CouponItem[]; tax: b
 
   const taxF = tax ? 0.88 : 1;
   const share = Math.pow(taxF, 1 / N); // podatek rozłożony po równo na zdarzenia
-  const P = items.reduce((a, x) => a * x.p, 1);
+  // zdarzenia z jednego meczu bywają powiązane: wtedy szansa kuponu to nie zwykły iloczyn
+  const links = couponLinks(items);
+  const P0 = items.reduce((a, x) => a * x.p, 1);
+  const P = Math.min(P0 * links.factor, Math.min(...items.map((x) => x.p)));
   const needTotal = 1 / (P * taxF);
   const allOdds = items.every((x) => x.odds && x.odds > 1);
   const O = allOdds ? items.reduce((a, x) => a * (x.odds as number), 1) : null;
@@ -68,6 +71,15 @@ export default function CouponTips({ items, tax }: { items: CouponItem[]; tax: b
   for (const x of items) counts.set(x.fixtureId, (counts.get(x.fixtureId) ?? 0) + 1);
   if ([...counts.values()].some((c) => c > 1))
     tips.push({ level: 'warn', text: 'Kilka zdarzeń z jednego meczu: bukmacherzy wyceniają takie połączenia z wyższą marżą, a zdarzenia są od siebie zależne. Lepiej po jednym zdarzeniu z meczu.' });
+  for (const l of links.pairs) {
+    const more = l.lift > 1;
+    tips.push({
+      level: more ? 'info' : 'warn',
+      text: `${l.a} i ${l.b} z jednego meczu wchodzą razem o ${Math.abs(Math.round((l.lift - 1) * 100))}% ${more ? 'częściej' : 'rzadziej'}, niż wynika z mnożenia szans.${more ? ' Bukmacher zwykle to wie i w kreatorze zakładów obniża za to kurs.' : ' Te zdarzenia sobie przeszkadzają.'}`,
+    });
+  }
+  if (Math.abs(links.factor - 1) >= 0.03)
+    tips.push({ level: 'info', text: `Szansa kuponu z uwzględnieniem powiązań: ${pct(P)} (zwykły iloczyn szans: ${pct(P0)}).` });
   const low = legs.filter((l) => l.state === 'low');
   if (low.length)
     tips.push({ level: 'bad', text: `Za niski kurs: ${low.map((l) => `${l.x.label} (${l.x.odds?.toFixed(2)}, potrzeba ≥ ${l.min.toFixed(2)})`).join('; ')}. Poszukaj lepszego kursu albo usuń to zdarzenie.` });
@@ -86,6 +98,10 @@ export default function CouponTips({ items, tax }: { items: CouponItem[]; tax: b
   if (resultGoals.length)
     tips.push({ level: 'info', text: `Wynik i gole (${resultGoals.map((x) => x.label).join(', ')}): na tych rynkach bukmacher jest dokładniejszy od modelu, a test na prawdziwych kursach nie potwierdził przewagi. Najmocniejsze typy modelu to faule, kartki, rożne i strzały celne.` });
   if (!allOdds) tips.push({ level: 'info', text: 'Wpisz kursy wszystkich zdarzeń, żeby zobaczyć wartość kuponu i sugerowaną stawkę.' });
+
+  // trafność kuponu z n typów z różnych meczów ≈ trafność typu do potęgi n
+  const h1 = legStats?.hit ?? FALLBACK_HIT;
+  const table = [1, 2, 3, 4, 5, 6].map((n) => ({ n, hit: Math.pow(h1, n) }));
 
   const verdict =
     ev === null
@@ -174,7 +190,9 @@ export default function CouponTips({ items, tax }: { items: CouponItem[]; tax: b
       )}
 
       <details>
-        <summary className="small" style={{ cursor: 'pointer' }}>Ile zdarzeń dawać? Wyniki testu na 1448 typach</summary>
+        <summary className="small" style={{ cursor: 'pointer' }}>
+          Ile zdarzeń dawać? {legStats ? `Trafność typów z ostatnich 30 dni (${legStats.n} typów)` : 'Wyniki testu wstecznego'}
+        </summary>
         <div className="tbl-wrap" style={{ marginTop: 8 }}>
           <table className="tbl">
             <thead>
@@ -185,7 +203,7 @@ export default function CouponTips({ items, tax }: { items: CouponItem[]; tax: b
               </tr>
             </thead>
             <tbody>
-              {BACKTEST.map((r) => (
+              {table.map((r) => (
                 <tr key={r.n} className={r.n === Math.min(6, N) ? 'pick' : ''}>
                   <td className="l">
                     {r.n}
@@ -199,7 +217,9 @@ export default function CouponTips({ items, tax }: { items: CouponItem[]; tax: b
           </table>
         </div>
         <p className="tiny muted" style={{ marginBottom: 0 }}>
-          Typy z kursem fair ≥ 1,30 z różnych meczów, mecze 26.09–6.11.2026.{' '}
+          {legStats
+            ? `Na podstawie zakładki Skuteczność: ${legStats.n} typów z kursem fair ≥ 1,25 z ${legStats.matches} meczów (weszło ${pct(legStats.hit)}, model zakładał ${pct(legStats.model)}). Kupony z typów z różnych meczów.`
+            : `Zakładka Skuteczność nie była jeszcze przeliczona dla tej wersji modelu, więc tabela korzysta z testu wstecznego (trafność typu ${pct(FALLBACK_HIT)}). Otwórz Skuteczność, a tabela zacznie się aktualizować.`}{' '}
           {tax
             ? 'Z podatkiem im więcej zdarzeń, tym lepiej rozkłada się 12%, ale kupon wchodzi rzadziej. Powyżej 4 zdarzeń zysk na podatku jest już minimalny.'
             : 'Bez podatku próg na zdarzenie jest prawie taki sam dla każdej długości kuponu, więc krótsze kupony są bezpieczniejsze.'}{' '}

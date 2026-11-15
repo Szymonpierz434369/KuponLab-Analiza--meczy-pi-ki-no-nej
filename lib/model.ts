@@ -64,6 +64,16 @@ export const MODEL_CFG = {
   marketWeight: 0,
   /** kalibracja szans dla rodzin zdarzeń: p' = σ(a + b·logit(p)); brak wpisu = bez zmian */
   calibration: {} as Record<string, { a: number; b: number }>,
+  /** waga średnich u siebie / na wyjeździe dla rożnych, kartek, strzałów i fauli (0 = tylko ogólne) */
+  venueStats: 0,
+  /** model mnożący (atak × obrona ÷ średnia) zamiast średniej z ataku i obrony */
+  multiplicative: { goals: false, stats: false },
+  /** ile ostatnich meczów liczy się do historii „ile razy weszło” (0 = wszystkie podane) */
+  histN: 0,
+  /** wagi czasowe w historii „ile razy weszło” (1 = wszystkie mecze równo) */
+  histDecay: 1,
+  /** progi wyboru „Typów z najwyższą zgodnością” */
+  picks: { pMin: 0.6, pMax: 0.92, histMin: 0.6, target: 0.72, wModel: 0.6, perGroup: 2, max: 6 },
 };
 
 const logit = (p: number) => Math.log(p / (1 - p));
@@ -92,6 +102,8 @@ export interface Market {
   /** skuteczność w ostatnich meczach: [trafione, mecze z danymi] */
   hitHome: [number, number] | null;
   hitAway: [number, number] | null;
+  /** skuteczność w historii z wagami czasowymi (gdy histDecay < 1) */
+  hitW?: number | null;
 }
 
 export interface ModelOutput {
@@ -121,16 +133,25 @@ const viewAway = (m: TeamMatch): View => ({ hg: m.ga, ag: m.gf, hht: m.htga, aht
 
 type Pred = (v: View) => boolean | null; // null = brak danych w tym meczu
 
-function hits(ms: TeamMatch[], view: (m: TeamMatch) => View, pred: Pred): [number, number] {
+function hits(ms: TeamMatch[], view: (m: TeamMatch) => View, pred: Pred): [number, number, number, number] {
   let k = 0;
   let n = 0;
-  for (const m of ms) {
+  let kw = 0;
+  let nw = 0;
+  const d = MODEL_CFG.histDecay;
+  const list = MODEL_CFG.histN > 0 ? ms.slice(0, MODEL_CFG.histN) : ms;
+  list.forEach((m, i) => {
     const r = pred(view(m));
-    if (r === null) continue;
+    if (r === null) return;
+    const w = Math.pow(d, i);
     n++;
-    if (r) k++;
-  }
-  return [k, n];
+    nw += w;
+    if (r) {
+      k++;
+      kw += w;
+    }
+  });
+  return [k, n, kw, nw];
 }
 
 const blend = (overall: number, venue: number, nVenue: number) => (nVenue >= 3 ? 0.6 * overall + 0.4 * venue : overall);
@@ -150,6 +171,11 @@ export function buildModel(
   const aDef = blend(A.goals.mAgainst, A.goals.away.mAgainst, A.goals.away.n);
   let lh = (hAtt + aDef) / 2;
   let la = (aAtt + hDef) / 2;
+  const gPrior = H.goals.prior && A.goals.prior ? (H.goals.prior + A.goals.prior) / 2 : null;
+  if (MODEL_CFG.multiplicative.goals && gPrior) {
+    lh = (hAtt * aDef) / gPrior;
+    la = (aAtt * hDef) / gPrior;
+  }
 
   const xgOk = H.stats.xg.n >= 5 && A.stats.xg.n >= 5;
   if (xgOk) {
@@ -201,8 +227,17 @@ export function buildModel(
 
   // --- Statystyki liczbowe ---
   const exp = (key: StatKey) => {
-    const home = clampL((H.stats[key].mFor + A.stats[key].mAgainst) / 2);
-    const away = clampL((A.stats[key].mFor + H.stats[key].mAgainst) / 2);
+    const vw = MODEL_CFG.venueStats;
+    const h = H.stats[key];
+    const a = A.stats[key];
+    const hFor = vw > 0 && h.home.n >= 2 ? (1 - vw) * h.mFor + vw * h.home.mFor : h.mFor;
+    const hAg = vw > 0 && h.home.n >= 2 ? (1 - vw) * h.mAgainst + vw * h.home.mAgainst : h.mAgainst;
+    const aFor = vw > 0 && a.away.n >= 2 ? (1 - vw) * a.mFor + vw * a.away.mFor : a.mFor;
+    const aAg = vw > 0 && a.away.n >= 2 ? (1 - vw) * a.mAgainst + vw * a.away.mAgainst : a.mAgainst;
+    const prior = h.prior && a.prior ? (h.prior + a.prior) / 2 : null;
+    const mult = MODEL_CFG.multiplicative.stats && prior;
+    const home = clampL(mult ? (hFor * aAg) / prior : (hFor + aAg) / 2);
+    const away = clampL(mult ? (aFor * hAg) / prior : (aFor + hAg) / 2);
     return { home, away, total: home + away };
   };
   const corners = exp('corners');
@@ -224,14 +259,17 @@ export function buildModel(
   const D = MODEL_CFG.dispersion;
   const markets: Market[] = [];
   const add = (id: string, group: MarketGroup, family: string, label: string, p: number, pred: Pred) => {
+    const hh = hits(H.matches, viewHome, pred);
+    const ha = hits(A.matches, viewAway, pred);
     markets.push({
       id,
       group,
       family,
       label,
       p: calibrate(family, Math.min(0.999, Math.max(0.001, p))),
-      hitHome: hits(H.matches, viewHome, pred),
-      hitAway: hits(A.matches, viewAway, pred),
+      hitHome: [hh[0], hh[1]],
+      hitAway: [ha[0], ha[1]],
+      hitW: hh[3] + ha[3] > 0 ? (hh[2] + ha[2]) / (hh[3] + ha[3]) : null,
     });
   };
 
@@ -338,7 +376,8 @@ export function buildModel(
 export function hitRate(m: Market): number | null {
   const k = (m.hitHome?.[0] ?? 0) + (m.hitAway?.[0] ?? 0);
   const n = (m.hitHome?.[1] ?? 0) + (m.hitAway?.[1] ?? 0);
-  return n >= 8 ? k / n : null;
+  if (n < 8) return null;
+  return MODEL_CFG.histDecay < 1 && m.hitW != null ? m.hitW : k / n;
 }
 
 /**
@@ -347,25 +386,38 @@ export function hitRate(m: Market): number | null {
  * Z każdej rodziny (np. „rożne powyżej”) bierzemy jedną linię – najbliższą 72%.
  */
 export function choosePicks(markets: Market[]): string[] {
+  const P = MODEL_CFG.picks;
   const scored = markets
     .map((m) => ({ m, hit: hitRate(m) }))
-    .filter(({ m, hit }) => m.p >= 0.6 && m.p <= 0.92 && (!MODEL_CFG.historyFilter || (hit !== null && hit >= 0.6)))
-    .map(({ m, hit }) => ({ m, score: MODEL_CFG.historyFilter ? 0.6 * m.p + 0.4 * (hit as number) : m.p }));
+    .filter(({ m, hit }) => m.p >= P.pMin && m.p <= P.pMax && (!MODEL_CFG.historyFilter || (hit !== null && hit >= P.histMin)))
+    .map(({ m, hit }) => ({ m, score: MODEL_CFG.historyFilter ? P.wModel * m.p + (1 - P.wModel) * (hit as number) : m.p }));
 
   const bestPerFamily = new Map<string, { m: Market; score: number }>();
   for (const s of scored) {
     const cur = bestPerFamily.get(s.m.family);
-    if (!cur || Math.abs(s.m.p - 0.72) < Math.abs(cur.m.p - 0.72)) bestPerFamily.set(s.m.family, s);
+    if (!cur || Math.abs(s.m.p - P.target) < Math.abs(cur.m.p - P.target)) bestPerFamily.set(s.m.family, s);
   }
   const perGroup = new Map<string, number>();
   return [...bestPerFamily.values()]
     .sort((a, b) => b.score - a.score)
     .filter(({ m }) => {
       const c = perGroup.get(m.group) ?? 0;
-      if (c >= 2) return false;
+      if (c >= P.perGroup) return false;
       perGroup.set(m.group, c + 1);
       return true;
     })
-    .slice(0, 6)
+    .slice(0, P.max)
     .map(({ m }) => m.id);
+}
+
+/** Rodzina zdarzenia na podstawie jego id (np. „c-o9.5” → „c-over”). */
+export function familyOf(id: string): string {
+  if (id === '1' || id === 'X' || id === '2') return '1x2';
+  if (id === '1X' || id === 'X2' || id === '12') return 'dc';
+  if (id === 'btts' || id === 'btts-no') return 'btts';
+  if (id === 'red') return 'red';
+  const p = id.replace(/\d+(\.\d+)?$/, '');
+  const map: Record<string, string> = { o: 'g-over', u: 'g-under', 'h-o': 'hg-over', 'a-o': 'ag-over', 'ht-o': 'ht-over' };
+  if (map[p]) return map[p];
+  return p.replace(/-o$/, '-over').replace(/-u$/, '-under');
 }

@@ -138,6 +138,8 @@ export interface SummaryOpts {
   priors?: Partial<Record<StatKey | 'goals', number>>;
   /** korekta goli na siłę rywali (wymaga oppAttF/oppDefF w meczach) */
   opponentAdjust?: boolean;
+  /** korekta strzałów, celnych i rożnych na siłę rywali: wartość / siła^beta (0 lub brak = bez korekty) */
+  statOppBeta?: number;
 }
 
 /**
@@ -155,6 +157,34 @@ export const DEFAULT_SUMMARY_OPTS: SummaryOpts = {
   priors: { goals: 1.616, shots: 13.556, sot: 4.689, corners: 4.961, yellow: 1.756, red: 0.075, fouls: 11.221 },
   opponentAdjust: true,
 };
+
+/** Ile ostatnich meczów drużyny bierze model. */
+export const HISTORY_MATCHES = 10;
+
+/**
+ * Średnie „przeciętnej drużyny” w poszczególnych ligach (na drużynę i mecz), do ściągania średnich.
+ * Klucz: nazwa ligi z ESPN. Pusta tabela = jedna wspólna średnia dla wszystkich lig.
+ */
+export const LEAGUE_PRIORS: Record<string, Partial<Record<StatKey | 'goals', number>>> = {};
+
+/** Liga, w której drużyna gra najczęściej (spośród lig z tabeli średnich). */
+export function homeLeague(ms: TeamMatch[]): string | null {
+  const cnt = new Map<string, number>();
+  for (const m of ms) if (LEAGUE_PRIORS[m.league]) cnt.set(m.league, (cnt.get(m.league) ?? 0) + 1);
+  let best: string | null = null;
+  let n = 0;
+  for (const [k, v] of cnt) if (v > n) [best, n] = [k, v];
+  return best;
+}
+
+/** Opcje średnich dla jednej drużyny: domyślne + średnie jej ligi (jeśli są w tabeli). */
+export function optsForTeam(ms: TeamMatch[], base: SummaryOpts = DEFAULT_SUMMARY_OPTS): SummaryOpts {
+  const lg = homeLeague(ms);
+  return lg ? { ...base, priors: { ...base.priors, ...LEAGUE_PRIORS[lg] } } : base;
+}
+
+/** Czy model potrzebuje siły rywali (pobierane są wtedy terminarze rywali). */
+export const needsOpponentForms = (o: SummaryOpts = DEFAULT_SUMMARY_OPTS) => !!(o.opponentAdjust || o.statOppBeta);
 
 function weightsFor(ms: TeamMatch[], decay = 1): number[] {
   return ms.map((_, i) => Math.pow(decay, i)); // ms: od najnowszego
@@ -175,8 +205,19 @@ function wmean(pairs: [number, number][], k = 0, prior?: number): number {
   return w > 0 ? s / w : prior ?? 0;
 }
 
+export interface VenueAgg {
+  n: number;
+  mFor: number;
+  mAgainst: number;
+}
+
 export interface StatAgg {
   n: number;
+  /** średnia „przeciętnej drużyny” użyta do ściągania (jeśli była) */
+  prior?: number;
+  /** średnie modelu tylko z meczów u siebie / na wyjeździe */
+  home: VenueAgg;
+  away: VenueAgg;
   avgFor: number;
   avgAgainst: number;
   /** średnie używane przez model (z wagami czasowymi i ściąganiem do średniej, jeśli włączone) */
@@ -190,21 +231,37 @@ export interface StatAgg {
   againsts: number[];
 }
 
+const OPP_ADJ_KEYS = new Set<StatKey>(['shots', 'sot', 'corners']);
+
 export function aggStat(ms: TeamMatch[], key: StatKey, opts: SummaryOpts = {}): StatAgg {
   const W = weightsFor(ms, opts.decay);
   const sel = ms.map((m, i) => ({ m, w: W[i] })).filter(({ m }) => m.hasStats && m.for[key] !== null && m.against[key] !== null);
+  // korekta na rywala: przeciwko mocnej obronie trudniej o rożne i strzały, więc liczą się bardziej
+  const b = opts.statOppBeta && OPP_ADJ_KEYS.has(key) ? opts.statOppBeta : 0;
+  const fA = (m: TeamMatch) => (b && m.oppDefF ? (m.for[key] as number) / Math.pow(m.oppDefF, b) : (m.for[key] as number));
+  const aA = (m: TeamMatch) => (b && m.oppAttF ? (m.against[key] as number) / Math.pow(m.oppAttF, b) : (m.against[key] as number));
   const rows = sel.map((x) => x.m).reverse();
   const fors = rows.map((m) => m.for[key] as number);
   const againsts = rows.map((m) => m.against[key] as number);
   const totals = fors.map((v, i) => v + againsts[i]);
   const prior = opts.priors?.[key];
   const k = prior !== undefined ? opts.shrinkK ?? 0 : 0;
+  const mFor = wmean(sel.map(({ m, w }) => [fA(m), w]), k, prior);
+  const mAgainst = wmean(sel.map(({ m, w }) => [aA(m), w]), k, prior);
+  // średnie u siebie / na wyjeździe ściągamy do ogólnej średniej drużyny (mało meczów)
+  const venue = (v: 'home' | 'away'): VenueAgg => {
+    const s = sel.filter(({ m }) => m.venue === v);
+    return { n: s.length, mFor: wmean(s.map(({ m, w }) => [fA(m), w]), 3, mFor), mAgainst: wmean(s.map(({ m, w }) => [aA(m), w]), 3, mAgainst) };
+  };
   return {
     n: rows.length,
+    prior,
+    home: venue('home'),
+    away: venue('away'),
     avgFor: avg(fors),
     avgAgainst: avg(againsts),
-    mFor: wmean(sel.map(({ m, w }) => [m.for[key] as number, w]), k, prior),
-    mAgainst: wmean(sel.map(({ m, w }) => [m.against[key] as number, w]), k, prior),
+    mFor,
+    mAgainst,
     avgTotal: avg(totals),
     minTotal: totals.length ? Math.min(...totals) : 0,
     maxTotal: totals.length ? Math.max(...totals) : 0,
@@ -215,6 +272,7 @@ export function aggStat(ms: TeamMatch[], key: StatKey, opts: SummaryOpts = {}): 
 
 export interface GoalsAgg {
   n: number;
+  prior?: number;
   avgFor: number;
   avgAgainst: number;
   avgTotal: number;
@@ -256,6 +314,7 @@ function aggGoals(ms: TeamMatch[], opts: SummaryOpts = {}): GoalsAgg {
   const chrono = ms.slice().reverse();
   return {
     n: ms.length,
+    prior,
     avgFor: avg(ms.map((m) => m.gf)),
     avgAgainst: avg(ms.map((m) => m.ga)),
     avgTotal: avg(ms.map(tot)),

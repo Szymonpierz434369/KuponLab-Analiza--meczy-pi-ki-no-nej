@@ -20,14 +20,28 @@ const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
 const fmtDate = (iso: string) =>
   new Intl.DateTimeFormat('pl-PL', { timeZone: 'Europe/Warsaw', day: '2-digit', month: '2-digit' }).format(new Date(iso));
 
+/** Przedział ufności 95% (Wilsona) dla trafności k/n: zwraca dolną i górną granicę. */
+function wilson(k: number, n: number): [number, number] {
+  if (!n) return [0, 0];
+  const z = 1.96;
+  const p = k / n;
+  const d = 1 + (z * z) / n;
+  const c = (p + (z * z) / (2 * n)) / d;
+  const h = (z * Math.sqrt((p * (1 - p)) / n + (z * z) / (4 * n * n))) / d;
+  return [Math.max(0, c - h), Math.min(1, c + h)];
+}
+
 function stats(list: Flat[]) {
   const n = list.length;
   const h = list.filter((x) => x.hit).length;
   const exp = n ? list.reduce((a, x) => a + x.p, 0) / n : 0;
   const fair = n ? list.reduce((a, x) => a + x.fair, 0) / n : 0;
   const roi = n ? list.reduce((a, x) => a + (x.hit ? x.fair : 0), 0) / n - 1 : 0;
-  return { n, h, rate: n ? h / n : 0, exp, fair, roi };
+  const [lo, hi] = wilson(h, n);
+  return { n, h, rate: n ? h / n : 0, exp, fair, roi, lo, hi, margin: (hi - lo) / 2 };
 }
+
+const pp = (x: number) => `${(x * 100).toFixed(1)} pp`;
 
 function groupBy(list: Flat[], key: (x: Flat) => string) {
   const m = new Map<string, Flat[]>();
@@ -158,7 +172,10 @@ export default function SkutecznoscPage() {
           <section className="card stack">
             <div className="kpis">
               <div className="kpi">
-                <div className="v" style={{ color: 'var(--accent)' }}>{s.n ? pct(s.rate) : '–'}</div>
+                <div className="v" style={{ color: 'var(--accent)' }}>
+                  {s.n ? pct(s.rate) : '–'}
+                  {s.n ? <span className="small muted" style={{ fontWeight: 500 }}> ±{(s.margin * 100).toFixed(1)}</span> : null}
+                </div>
                 <div className="l">Weszło ({s.h} z {s.n})</div>
               </div>
               <div className="kpi">
@@ -180,7 +197,8 @@ export default function SkutecznoscPage() {
             </div>
             <p className="tiny muted" style={{ margin: 0 }}>
               {matches} meczów, {s.n} typów po filtrach. „Kurs na plus” to minimalny średni kurs bukmachera, przy którym przy tej
-              skuteczności wychodzisz na plus{tax ? ' (z podatkiem 12%)' : ' (bez podatku, np. promocja Betclic)'}. Przy kilkuset typach wynik może się wahać o ok. ±3 punkty procentowe.
+              skuteczności wychodzisz na plus{tax ? ' (z podatkiem 12%)' : ' (bez podatku, np. promocja Betclic)'}.
+              {s.n ? ` Margines błędu: z 95% pewnością prawdziwa trafność leży między ${pct(s.lo)} a ${pct(s.hi)}. Im więcej typów, tym węższy przedział.` : ''}
             </p>
           </section>
 
@@ -246,6 +264,7 @@ function Table({ title, rows, note }: { title: string; rows: ({ k: string } & Re
               <th className="l" />
               <th>Typów</th>
               <th>Weszło</th>
+              <th title="Margines błędu (95%): prawdziwa trafność leży w tym zakresie wokół wyniku">±</th>
               <th>Model</th>
               <th>Różnica</th>
             </tr>
@@ -253,6 +272,8 @@ function Table({ title, rows, note }: { title: string; rows: ({ k: string } & Re
           <tbody>
             {rows.map((r) => {
               const diff = r.rate - r.exp;
+              // różnica jest pewna, gdy wartość z modelu leży poza przedziałem ufności
+              const sure = r.exp < r.lo || r.exp > r.hi;
               return (
                 <tr key={r.k}>
                   <td className="l">{r.k}</td>
@@ -261,10 +282,11 @@ function Table({ title, rows, note }: { title: string; rows: ({ k: string } & Re
                     {pct(r.rate)}
                     <span className="pbar"><i style={{ width: pct(r.rate) }} /></span>
                   </td>
+                  <td className="muted tiny">{pp(r.margin).replace(' pp', '')}</td>
                   <td className="muted">{pct(r.exp)}</td>
-                  <td className={r.n < 30 ? 'muted' : diff >= 0 ? 'val-pos' : 'val-neg'}>
+                  <td className={!sure ? 'muted' : diff >= 0 ? 'val-pos' : 'val-neg'}>
                     {diff >= 0 ? '+' : ''}
-                    {(diff * 100).toFixed(1)} pp
+                    {pp(diff)}
                   </td>
                 </tr>
               );
@@ -273,7 +295,7 @@ function Table({ title, rows, note }: { title: string; rows: ({ k: string } & Re
         </table>
       </div>
       <p className="tiny muted" style={{ marginBottom: 0 }}>
-        {note ? `${note} ` : ''}Przy mniej niż 30 typach różnica jest szara: to za mało, żeby wyciągać wnioski.
+        {note ? `${note} ` : ''}„±” to margines błędu (95%). Różnica jest kolorowa tylko wtedy, gdy jest większa niż ten margines; szara różnica może być przypadkiem.
       </p>
     </section>
   );

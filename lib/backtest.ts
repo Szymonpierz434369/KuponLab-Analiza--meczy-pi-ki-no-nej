@@ -1,9 +1,9 @@
-import { backtestGet, backtestSave } from './db';
+import { backtestGet, backtestSave, backtestSince } from './db';
 import { getFinishedFull, getFixturesByDate, getOpponentForms, getTeamFinished, warsawDate } from './data';
 import { pool } from './espn';
 import { buildModel, hitRate, MODEL_VERSION } from './model';
 import { settleMarket } from './settle';
-import { attachOpponentFactors, DEFAULT_SUMMARY_OPTS, summarize, toTeamMatch } from './stats';
+import { attachOpponentFactors, HISTORY_MATCHES, needsOpponentForms, optsForTeam, summarize, toTeamMatch } from './stats';
 import type { ApiFixture } from './types';
 
 // Test wsteczny: dla rozegranych meczów liczymy typy tak, jak aplikacja pokazałaby je przed
@@ -60,18 +60,18 @@ async function analyse(fx: ApiFixture): Promise<BacktestRow> {
     getTeamFinished(T.teams.home.id, season, before),
     getTeamFinished(T.teams.away.id, season, before),
   ]);
-  const hl = hAll.slice(0, 10);
-  const al = aAll.slice(0, 10);
+  const hl = hAll.slice(0, HISTORY_MATCHES);
+  const al = aAll.slice(0, HISTORY_MATCHES);
   const full = await getFinishedFull([...new Set([...hl, ...al].map((f) => f.fixture.id))]);
   const hm = hl.map((f) => toTeamMatch(full.get(f.fixture.id) ?? f, T.teams.home.id));
   const am = al.map((f) => toTeamMatch(full.get(f.fixture.id) ?? f, T.teams.away.id));
-  if (DEFAULT_SUMMARY_OPTS.opponentAdjust) {
+  if (needsOpponentForms()) {
     const form = await getOpponentForms([...hm, ...am].map((m) => m.opponentId), season, before);
     attachOpponentFactors(hm, form);
     attachOpponentFactors(am, form);
   }
-  const H = summarize(T.teams.home, hm, DEFAULT_SUMMARY_OPTS);
-  const A = summarize(T.teams.away, am, DEFAULT_SUMMARY_OPTS);
+  const H = summarize(T.teams.home, hm, optsForTeam(hm));
+  const A = summarize(T.teams.away, am, optsForTeam(am));
   if (Math.min(H.goals.n, A.goals.n) < 6) return base;
 
   const { markets, picks } = buildModel(H, A);
@@ -134,4 +134,29 @@ export async function runBacktest(days: number, progress: Progress = () => {}): 
   });
 
   return rows.sort((a, b) => b.date.localeCompare(a.date));
+}
+
+export interface LegStats {
+  /** liczba rozegranych meczów i typów (kurs fair od `minFair`) */
+  matches: number;
+  n: number;
+  /** trafność pojedynczego typu i średnia szansa z modelu */
+  hit: number;
+  model: number;
+  from: string | null;
+}
+
+/** Trafność typów z zapisanych wyników testu (bez pobierania nowych danych). */
+export function cachedLegStats(days = 30, minFair = 1.25): LegStats | null {
+  const since = shift(warsawDate(), -days);
+  const rows = backtestSince(MODEL_VERSION, since) as BacktestRow[];
+  const picks = rows.flatMap((r) => r.picks).filter((p) => p.fair >= minFair);
+  if (picks.length < 50) return null;
+  return {
+    matches: rows.length,
+    n: picks.length,
+    hit: picks.filter((p) => p.hit).length / picks.length,
+    model: picks.reduce((a, p) => a + p.p, 0) / picks.length,
+    from: rows.length ? rows.map((r) => r.date).sort()[0] : null,
+  };
 }

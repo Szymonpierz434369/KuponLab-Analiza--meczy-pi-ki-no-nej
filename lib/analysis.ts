@@ -3,7 +3,7 @@ import { getFinishedFull, getFixture, getOpponentForms, getRawSummary, getTeamFi
 import { fairProbs, oddsFromSummary, type MarketOdds } from './market';
 import { compactForAi } from './aiContext';
 import { buildModel, Market, ModelOutput } from './model';
-import { attachOpponentFactors, DEFAULT_SUMMARY_OPTS, summarize, toTeamMatch, TeamSummary } from './stats';
+import { attachOpponentFactors, HISTORY_MATCHES, needsOpponentForms, optsForTeam, summarize, toTeamMatch, TeamSummary } from './stats';
 
 export interface MatchAnalysis {
   fixture: {
@@ -43,8 +43,8 @@ export async function buildAnalysis(fixtureId: number, progress: Progress = () =
     getTeamFinished(fx.teams.home.id, season, before),
     getTeamFinished(fx.teams.away.id, season, before),
   ]);
-  const homeLast = homeAll.slice(0, 10);
-  const awayLast = awayAll.slice(0, 10);
+  const homeLast = homeAll.slice(0, HISTORY_MATCHES);
+  const awayLast = awayAll.slice(0, HISTORY_MATCHES);
 
   const ids = [...new Set([...homeLast, ...awayLast].map((f) => f.fixture.id))];
   const full = await getFinishedFull(ids, (done, n) => progress(`Pobieram statystyki meczów (${done}/${n})`, 2 + Math.round((done / Math.max(1, n)) * 20), total));
@@ -53,14 +53,14 @@ export async function buildAnalysis(fixtureId: number, progress: Progress = () =
   const toMatches = (list: typeof homeLast, teamId: number) => list.map((f) => toTeamMatch(full.get(f.fixture.id) ?? f, teamId));
   const hm = toMatches(homeLast, fx.teams.home.id);
   const am = toMatches(awayLast, fx.teams.away.id);
-  if (DEFAULT_SUMMARY_OPTS.opponentAdjust) {
+  if (needsOpponentForms()) {
     progress('Sprawdzam siłę rywali z ostatnich meczów', 22, total);
     const form = await getOpponentForms([...hm, ...am].map((m) => m.opponentId), season, before);
     attachOpponentFactors(hm, form);
     attachOpponentFactors(am, form);
   }
-  const home = summarize({ id: fx.teams.home.id, name: fx.teams.home.name, logo: fx.teams.home.logo }, hm, DEFAULT_SUMMARY_OPTS);
-  const away = summarize({ id: fx.teams.away.id, name: fx.teams.away.name, logo: fx.teams.away.logo }, am, DEFAULT_SUMMARY_OPTS);
+  const home = summarize({ id: fx.teams.home.id, name: fx.teams.home.name, logo: fx.teams.home.logo }, hm, optsForTeam(hm));
+  const away = summarize({ id: fx.teams.away.id, name: fx.teams.away.name, logo: fx.teams.away.logo }, am, optsForTeam(am));
 
   const raw = await getRawSummary(fixtureId).catch(() => null);
   const odds = raw ? oddsFromSummary(raw) : null;
