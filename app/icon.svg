@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256"><title>Kursor</title>
+<rect width="256" height="256" rx="64" fill="#0b0f0d"/>
+<g transform="translate(29 32) scale(0.75)" fill="#3ccf7f">
+<path d="M40 28 H88 V228 H40 Z M173.6 113.9 L238.9 28.0 L181.1 28.0 L137.0 86.1 A42 42 0 0 1 173.6 113.9 Z M137.0 169.9 L181.1 228.0 L238.9 228.0 L173.6 142.1 A42 42 0 0 1 137.0 169.9 Z"/>
+<circle cx="134" cy="128" r="28" fill="#f2f5f3"/>
+</g></svg>

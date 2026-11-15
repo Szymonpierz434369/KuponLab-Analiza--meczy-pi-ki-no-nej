@@ -1,11 +1,15 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
-import { CouponNavLink, CouponProvider } from '@/components/CouponProvider';
+import { CouponProvider } from '@/components/CouponProvider';
+import { LogoMark } from '@/components/Logo';
+import NavLinks from '@/components/NavLinks';
 
 export const metadata: Metadata = {
-  title: 'KuponLab',
-  description: 'Statystyki z 10 ostatnich meczów, model szans i asystent AI do budowania kuponu.',
+  title: 'Kursor',
+  description: 'Statystyki z ostatnich meczów, model szans i asystent AI do budowania kuponu.',
 };
+
+export const viewport: Viewport = { themeColor: '#0b0f0d' };
 
 export const dynamic = 'force-dynamic';
 
@@ -16,16 +20,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <CouponProvider>
           <header className="topbar">
             <div className="wrap">
-              <a href="/" className="brand">
-                <span className="brand-mark" aria-hidden />
-                KuponLab
+              <a href="/" className="brand" aria-label="Kursor – strona główna">
+                <LogoMark size={30} className="brand-mark" />
+                <span className="brand-name">Kursor</span>
               </a>
-              <nav className="nav">
-                <a href="/">Mecze</a>
-                <a href="/skutecznosc">Skuteczność</a>
-                <a href="/dziennik">Dziennik</a>
-                <CouponNavLink />
-              </nav>
+              <NavLinks />
             </div>
           </header>
           <main className="wrap">{children}</main>

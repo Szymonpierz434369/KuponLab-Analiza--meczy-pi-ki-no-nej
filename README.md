@@ -1,8 +1,10 @@
-# KuponLab
+# Kursor (dawniej KuponLab)
 
 Aplikacja do analizy meczów piłkarskich i budowania kuponu. Pokazuje nadchodzące mecze, zbiera statystyki z 10 ostatnich spotkań obu drużyn (bramki, strzały, strzały celne, rożne, żółte i czerwone kartki, faule, posiadanie, xG), liczy szanse modelem Poissona i podpowiada typy. Wbudowany asystent AI (Claude) pomaga w analizie i układaniu kuponu.
 
 Aplikacja nie przyjmuje zakładów. Kupon to lista typów, którą przepisujesz u wybranego bukmachera.
+
+Wygląd: ciemny motyw czarno-zielono-biały, font Geist (pliki w `public/fonts`, licencja SIL OFL), logo w `public/brand` i `components/Logo.tsx`. Znak to litera K, której ramiona wychodzą z piłki.
 
 ## Czego potrzebujesz
 

@@ -66,11 +66,11 @@ export function useCoupon() {
   return c;
 }
 
-export function CouponNavLink() {
+export function CouponNavLink({ className }: { className?: string }) {
   const { items } = useCoupon();
   return (
-    <a href="/kupon">
-      Kupon{items.length > 0 && <span className="badge">{items.length}</span>}
+    <a href="/kupon" className={className}>
+      Kupon{items.length > 0 && <span key={items.length} className="badge">{items.length}</span>}
     </a>
   );
 }

@@ -3,7 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const BASE_RULES = `Jesteś analitykiem statystyk piłkarskich w aplikacji KuponLab. Piszesz po polsku, konkretnie i bez lania wody.
+const BASE_RULES = `Jesteś analitykiem statystyk piłkarskich w aplikacji Kursor. Piszesz po polsku, konkretnie i bez lania wody.
 
 Zasady:
 - Opierasz się WYŁĄCZNIE na danych w sekcji DANE (statystyki z ostatnich meczów i wyliczenia modelu Poissona). Nie wymyślaj kontuzji, składów, newsów ani kursów, których nie ma w danych. Jeśli czegoś brakuje, powiedz to wprost.
