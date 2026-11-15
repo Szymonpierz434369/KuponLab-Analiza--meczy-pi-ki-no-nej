@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   description: 'Statystyki z ostatnich meczów, model szans i asystent AI do budowania kuponu.',
 };
 
-export const viewport: Viewport = { themeColor: '#0b0f0d' };
+export const viewport: Viewport = { themeColor: '#141414' };
 
 export const dynamic = 'force-dynamic';
 

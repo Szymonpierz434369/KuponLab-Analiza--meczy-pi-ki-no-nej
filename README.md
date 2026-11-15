@@ -4,7 +4,7 @@ Aplikacja do analizy meczów piłkarskich i budowania kuponu. Pokazuje nadchodz�
 
 Aplikacja nie przyjmuje zakładów. Kupon to lista typów, którą przepisujesz u wybranego bukmachera.
 
-Wygląd: ciemny motyw czarno-zielono-biały, font Geist (pliki w `public/fonts`, licencja SIL OFL), logo w `public/brand` i `components/Logo.tsx`. Znak to litera K, której ramiona wychodzą z piłki.
+Wygląd: ciemny motyw „Grafit” (ciemnoszary, biały tekst, zielony akcent), font Geist (pliki w `public/fonts`, licencja SIL OFL), logo w `public/brand` i `components/Logo.tsx`. Znak to litera K, której ramiona wychodzą z piłki.
 
 ## Czego potrzebujesz
 

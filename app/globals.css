@@ -1,4 +1,4 @@
-/* Kursor – czarno-zielono-biały motyw. Wygląd tylko w tym pliku; nazwy klas jak w komponentach. */
+/* Kursor – motyw „Grafit”: neutralny ciemnoszary, biały tekst, zielony akcent. Wygląd tylko w tym pliku; nazwy klas jak w komponentach. */
 @font-face {
   font-family: 'Geist';
   src: url('/fonts/Geist-Variable.woff2') format('woff2');
@@ -13,15 +13,15 @@
 }
 
 :root {
-  --bg: #0b0f0d;
-  --bg-glow: rgba(60, 207, 127, 0.09);
-  --panel: #111714;
-  --panel-2: #172019;
-  --panel-3: #1d2820;
-  --line: #222d26;
-  --line-2: #2e3b33;
-  --fg: #f2f5f3;
-  --muted: #8b998f;
+  --bg: #141414;
+  --bg-deep: #0f0f0f;
+  --panel: #1c1c1c;
+  --panel-2: #232323;
+  --panel-3: #2a2a2a;
+  --line: #2c2c2c;
+  --line-2: #3a3a3a;
+  --fg: #f5f5f5;
+  --muted: #9a9a9a;
   --accent: #3ccf7f;
   --accent-2: #2bb36a;
   --accent-ink: #04130a;
@@ -51,11 +51,7 @@ body {
   font: 15px/1.55 var(--font);
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
-  background:
-    radial-gradient(900px 420px at 50% -140px, var(--bg-glow), transparent 70%),
-    radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px) 0 0 / 22px 22px,
-    var(--bg);
-  background-attachment: fixed;
+  background: var(--bg);
 }
 ::selection { background: var(--accent); color: var(--accent-ink); }
 a { color: inherit; text-underline-offset: 3px; text-decoration-color: var(--line-2); transition: color 0.18s var(--ease), text-decoration-color 0.18s; }
@@ -72,7 +68,7 @@ p { text-wrap: pretty; }
 /* Nagłówek */
 .topbar {
   position: sticky; top: 0; z-index: 20;
-  background: rgba(11, 15, 13, 0.72);
+  background: rgba(20, 20, 20, 0.8);
   backdrop-filter: saturate(1.4) blur(14px);
   -webkit-backdrop-filter: saturate(1.4) blur(14px);
   border-bottom: 1px solid var(--line);
@@ -81,13 +77,13 @@ p { text-wrap: pretty; }
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 700; font-size: 1.2rem; letter-spacing: -0.04em; }
 .brand-mark { flex: none; filter: drop-shadow(0 4px 14px rgba(60, 207, 127, 0.25)); transition: transform 0.35s var(--ease); }
 .brand:hover .brand-mark { transform: rotate(-8deg) scale(1.06); }
-.brand-mark .logo-tile { fill: #18211c; stroke: var(--line-2); stroke-width: 6; }
+.brand-mark .logo-tile { fill: #232323; stroke: var(--line-2); stroke-width: 6; }
 .brand-mark .logo-k { fill: var(--accent); }
 .brand-mark .logo-ball { fill: var(--fg); transform-origin: 134px 128px; transform-box: view-box; }
 .brand:hover .logo-ball { animation: ball-pop 0.6s var(--ease); }
 @keyframes ball-pop { 40% { transform: scale(1.25); } 100% { transform: scale(1); } }
 
-.nav { display: flex; gap: 2px; margin-left: auto; align-items: center; padding: 4px; border: 1px solid var(--line); border-radius: 999px; background: rgba(17, 23, 20, 0.7); }
+.nav { display: flex; gap: 2px; margin-left: auto; align-items: center; padding: 4px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); }
 .nav a { position: relative; text-decoration: none; padding: 6px 14px; border-radius: 999px; color: var(--muted); font-weight: 550; font-size: 0.9rem; white-space: nowrap; transition: color 0.2s var(--ease), background 0.2s var(--ease); }
 .nav a:hover { color: var(--fg); background: var(--panel-2); }
 .nav a.active { color: var(--accent-ink); background: var(--accent); box-shadow: 0 4px 16px -4px var(--accent-glow); }
@@ -167,9 +163,9 @@ input, select, textarea {
   padding: 7px 11px;
   transition: border-color 0.18s var(--ease), box-shadow 0.18s var(--ease);
 }
-input:hover, select:hover, textarea:hover { border-color: #3c4b42; }
+input:hover, select:hover, textarea:hover { border-color: #4a4a4a; }
 input:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); outline: none; }
-input::placeholder, textarea::placeholder { color: #5f6c64; }
+input::placeholder, textarea::placeholder { color: #666; }
 input[type='checkbox'] { accent-color: var(--accent); width: 16px; height: 16px; padding: 0; }
 input.odds { width: 76px; padding: 4px 8px; text-align: right; font-family: var(--mono); font-size: 0.9rem; }
 select { cursor: pointer; }
@@ -225,13 +221,13 @@ select { cursor: pointer; }
 .form { display: flex; gap: 3px; justify-content: center; flex-wrap: wrap; max-width: 100%; }
 .form b { width: 20px; height: 20px; border-radius: 6px; font-size: 0.68rem; display: grid; place-items: center; color: var(--accent-ink); }
 .form .W { background: var(--good); }
-.form .D { background: #55625a; color: var(--fg); }
+.form .D { background: #555; color: var(--fg); }
 .form .L { background: var(--bad); color: #1b0606; }
 
 .prob3 { display: flex; height: 38px; border-radius: 10px; overflow: hidden; font-weight: 700; font-size: 0.85rem; gap: 2px; background: var(--bg); }
 .prob3 div { display: grid; place-items: center; min-width: 36px; transform-origin: left; animation: grow-x 0.8s var(--ease) both; }
 .prob3 .h { background: var(--home); color: var(--accent-ink); }
-.prob3 .d { background: #3a463f; color: var(--fg); animation-delay: 0.08s; }
+.prob3 .d { background: #3a3a3a; color: var(--fg); animation-delay: 0.08s; }
 .prob3 .a { background: var(--away); color: var(--accent-ink); animation-delay: 0.16s; }
 @keyframes grow-x { from { transform: scaleX(0); opacity: 0; } to { transform: none; opacity: 1; } }
 
@@ -279,7 +275,7 @@ table.tbl { border-collapse: collapse; width: 100%; font-size: 0.86rem; }
 .tbl tr.pick td { background: var(--accent-soft); }
 .res { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; color: var(--accent-ink); }
 .res.W { background: var(--good); }
-.res.D { background: #3a463f; color: var(--fg); }
+.res.D { background: #3a3a3a; color: var(--fg); }
 .res.L { background: var(--bad); color: #1b0606; }
 
 .pbar { position: relative; width: 90px; height: 6px; border-radius: 3px; background: var(--bg); display: inline-block; vertical-align: middle; margin-left: 8px; overflow: hidden; }
@@ -335,7 +331,7 @@ table.tbl { border-collapse: collapse; width: 100%; font-size: 0.86rem; }
 .sel:last-child { border-bottom: 0; }
 @media (max-width: 560px) { .sel { grid-template-columns: minmax(0, 1fr) auto; } }
 
-.foot { border-top: 1px solid var(--line); padding-block: 18px; font-size: 0.78rem; color: var(--muted); background: rgba(11, 15, 13, 0.6); }
+.foot { border-top: 1px solid var(--line); padding-block: 18px; font-size: 0.78rem; color: var(--muted); background: var(--bg-deep); }
 
 /* Podpowiedzi do kuponu */
 .ok-box { border: 1px solid rgba(60, 207, 127, 0.3); border-left: 3px solid var(--good); background: var(--accent-soft); padding: 11px 15px; border-radius: 10px; }
