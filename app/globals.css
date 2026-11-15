@@ -225,3 +225,13 @@ main.wrap { padding-block: 24px 64px; }
 .tips li.bad { border-left-color: var(--bad); }
 .tips li.warn { border-left-color: var(--warn); }
 details summary { color: var(--muted); }
+
+/* Menu na telefonie: 4 pozycje + kupon muszą się zmieścić */
+.nav a { white-space: nowrap; }
+@media (max-width: 560px) {
+  .topbar .wrap { gap: 6px; }
+  .nav { min-width: 0; overflow-x: auto; scrollbar-width: none; gap: 0; }
+  .nav a { padding: 6px 6px; font-size: 0.8rem; }
+  .brand { font-size: 0.95rem; }
+}
+.form { flex-wrap: wrap; max-width: 100%; }

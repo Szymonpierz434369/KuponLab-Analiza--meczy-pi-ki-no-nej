@@ -31,6 +31,13 @@ function open(): Database.Database {
       model_version integer not null,
       row text not null
     );
+    create table if not exists journal (
+      id integer primary key autoincrement,
+      created_at text not null,
+      stake real not null,
+      tax integer not null,
+      items text not null
+    );
     create table if not exists analyses (
       fixture_id integer primary key,
       kickoff text not null,
@@ -95,4 +102,27 @@ export function backtestSave(fixtureId: number, kickoff: string, version: number
   db.prepare(
     'insert into backtest (fixture_id, kickoff, model_version, row) values (?, ?, ?, ?) on conflict(fixture_id) do update set kickoff = excluded.kickoff, model_version = excluded.model_version, row = excluded.row',
   ).run(fixtureId, kickoff, version, JSON.stringify(row));
+}
+
+export interface JournalRow {
+  id: number;
+  created_at: string;
+  stake: number;
+  tax: number;
+  items: string;
+}
+
+export function journalAdd(stake: number, tax: boolean, items: unknown): number {
+  const r = db
+    .prepare('insert into journal (created_at, stake, tax, items) values (?, ?, ?, ?)')
+    .run(new Date().toISOString(), stake, tax ? 1 : 0, JSON.stringify(items));
+  return Number(r.lastInsertRowid);
+}
+
+export function journalList(): JournalRow[] {
+  return db.prepare('select * from journal order by created_at desc').all() as JournalRow[];
+}
+
+export function journalDelete(id: number) {
+  db.prepare('delete from journal where id = ?').run(id);
 }

@@ -1,6 +1,7 @@
 import { cacheGet, cacheSet } from './db';
 import { DataError, espnGet, fromSchedule, fromScoreboard, fromSummary, pool } from './espn';
 import { EXTRA_LEAGUES, LEAGUES } from './leagues';
+import type { OpponentForm } from './stats';
 import { ApiFixture, FINISHED } from './types';
 
 const MIN = 60_000;
@@ -84,7 +85,8 @@ export async function getFinishedFull(ids: number[], onEach?: (done: number, tot
         f = fromSummary(s);
         const hasStats = (f.statistics?.length ?? 0) > 0;
         const oldEnough = Date.now() / 1000 - f.fixture.timestamp > 2 * 24 * 3600;
-        if (hasStats || oldEnough) cacheSet(`full:${id}`, f);
+        // na stałe zapisujemy tylko mecze zakończone (trwający mecz też ma już statystyki)
+        if (FINISHED.has(f.fixture.status.short) && (hasStats || oldEnough)) cacheSet(`full:${id}`, f);
       }
     }
     if (f) out.set(id, f);
@@ -96,4 +98,36 @@ export async function getFinishedFull(ids: number[], onEach?: (done: number, tot
 /** Bezpośrednie mecze wyliczone z terminarza gospodarzy */
 export function headToHead(homeFinished: ApiFixture[], awayId: number): ApiFixture[] {
   return homeFinished.filter((f) => f.teams.home.id === awayId || f.teams.away.id === awayId).slice(0, 6);
+}
+
+/** Forma rywali (średnio strzelone i stracone gole w ostatnich 10 meczach przed `beforeTs`). */
+export async function getOpponentForms(
+  opponentIds: number[],
+  season: number,
+  beforeTs: number,
+): Promise<Map<number, OpponentForm>> {
+  const ids = [...new Set(opponentIds.filter((x) => x > 0))];
+  const out = new Map<number, OpponentForm>();
+  await pool(ids, 6, async (oid) => {
+    try {
+      const fx = (await getTeamFinished(oid, season, beforeTs)).slice(0, 10);
+      if (!fx.length) return;
+      let sc = 0;
+      let co = 0;
+      for (const f of fx) {
+        const home = f.teams.home.id === oid;
+        sc += (home ? f.goals.home : f.goals.away) ?? 0;
+        co += (home ? f.goals.away : f.goals.home) ?? 0;
+      }
+      out.set(oid, { scored: sc / fx.length, conceded: co / fx.length, n: fx.length });
+    } catch {
+      // brak danych rywala – mecz liczony bez korekty
+    }
+  });
+  return out;
+}
+
+/** Surowe dane meczu z ESPN (do kursów bukmacherskich). */
+export async function getRawSummary(id: number): Promise<unknown | null> {
+  return espnGet<unknown>(`all/summary?event=${id}`, { maxAgeMs: 30 * MIN, soft: true });
 }

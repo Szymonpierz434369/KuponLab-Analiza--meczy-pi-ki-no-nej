@@ -52,7 +52,11 @@ export interface TeamMatch {
   league: string;
   leagueLogo: string;
   opponent: string;
+  opponentId: number;
   opponentLogo: string;
+  /** siła rywala względem średniej (1 = przeciętny): ile strzela i ile traci; ustawiane przy korekcie na rywali */
+  oppAttF?: number | null;
+  oppDefF?: number | null;
   venue: 'home' | 'away';
   gf: number;
   ga: number;
@@ -108,6 +112,7 @@ export function toTeamMatch(f: ApiFixture, teamId: number): TeamMatch {
     league: f.league.name,
     leagueLogo: f.league.logo,
     opponent: opp.name,
+    opponentId: opp.id,
     opponentLogo: opp.logo,
     venue: isHome ? 'home' : 'away',
     gf,
@@ -123,10 +128,60 @@ export function toTeamMatch(f: ApiFixture, teamId: number): TeamMatch {
 
 const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
 
+/** Opcje liczenia średnich dla modelu (domyślnie: zwykła średnia, jak w pierwszej wersji). */
+export interface SummaryOpts {
+  /** waga meczu maleje z każdym starszym meczem: 1, d, d², … (1 = wszystkie mecze równo) */
+  decay?: number;
+  /** siła ściągania do średniej: tyle „wirtualnych” przeciętnych meczów dodajemy (0 = brak) */
+  shrinkK?: number;
+  /** średnie „przeciętnej drużyny” na mecz, do ściągania */
+  priors?: Partial<Record<StatKey | 'goals', number>>;
+  /** korekta goli na siłę rywali (wymaga oppAttF/oppDefF w meczach) */
+  opponentAdjust?: boolean;
+}
+
+/**
+ * Ustawienia średnich dla modelu, wybrane testem (uczenie: 538 meczów 1.09–15.10.2026,
+ * sprawdzenie: 561 meczów 16.10–14.11.2026). Każda zmiana poprawiła błąd Briera i trafność
+ * typów na meczach testowych:
+ * - wagi czasowe 0,9: nowsze mecze ważą więcej,
+ * - ściąganie do średniej z siłą 8 meczów: mniej szumu przy 10 meczach,
+ * - korekta goli na siłę rywali.
+ * „priors” to średnie na drużynę i mecz z danych uczących.
+ */
+export const DEFAULT_SUMMARY_OPTS: SummaryOpts = {
+  decay: 0.9,
+  shrinkK: 8,
+  priors: { goals: 1.616, shots: 13.556, sot: 4.689, corners: 4.961, yellow: 1.756, red: 0.075, fouls: 11.221 },
+  opponentAdjust: true,
+};
+
+function weightsFor(ms: TeamMatch[], decay = 1): number[] {
+  return ms.map((_, i) => Math.pow(decay, i)); // ms: od najnowszego
+}
+
+/** średnia ważona z opcjonalnym ściąganiem do wartości `prior` z siłą k */
+function wmean(pairs: [number, number][], k = 0, prior?: number): number {
+  let s = 0;
+  let w = 0;
+  for (const [x, wi] of pairs) {
+    s += x * wi;
+    w += wi;
+  }
+  if (prior !== undefined && k > 0) {
+    s += prior * k;
+    w += k;
+  }
+  return w > 0 ? s / w : prior ?? 0;
+}
+
 export interface StatAgg {
   n: number;
   avgFor: number;
   avgAgainst: number;
+  /** średnie używane przez model (z wagami czasowymi i ściąganiem do średniej, jeśli włączone) */
+  mFor: number;
+  mAgainst: number;
   avgTotal: number;
   minTotal: number;
   maxTotal: number;
@@ -135,15 +190,21 @@ export interface StatAgg {
   againsts: number[];
 }
 
-export function aggStat(ms: TeamMatch[], key: StatKey): StatAgg {
-  const rows = ms.filter((m) => m.hasStats && m.for[key] !== null && m.against[key] !== null).slice().reverse();
+export function aggStat(ms: TeamMatch[], key: StatKey, opts: SummaryOpts = {}): StatAgg {
+  const W = weightsFor(ms, opts.decay);
+  const sel = ms.map((m, i) => ({ m, w: W[i] })).filter(({ m }) => m.hasStats && m.for[key] !== null && m.against[key] !== null);
+  const rows = sel.map((x) => x.m).reverse();
   const fors = rows.map((m) => m.for[key] as number);
   const againsts = rows.map((m) => m.against[key] as number);
   const totals = fors.map((v, i) => v + againsts[i]);
+  const prior = opts.priors?.[key];
+  const k = prior !== undefined ? opts.shrinkK ?? 0 : 0;
   return {
     n: rows.length,
     avgFor: avg(fors),
     avgAgainst: avg(againsts),
+    mFor: wmean(sel.map(({ m, w }) => [m.for[key] as number, w]), k, prior),
+    mAgainst: wmean(sel.map(({ m, w }) => [m.against[key] as number, w]), k, prior),
     avgTotal: avg(totals),
     minTotal: totals.length ? Math.min(...totals) : 0,
     maxTotal: totals.length ? Math.max(...totals) : 0,
@@ -157,8 +218,11 @@ export interface GoalsAgg {
   avgFor: number;
   avgAgainst: number;
   avgTotal: number;
-  home: { n: number; avgFor: number; avgAgainst: number };
-  away: { n: number; avgFor: number; avgAgainst: number };
+  /** średnie dla modelu (wagi czasowe, ściąganie, korekta na rywali – jeśli włączone) */
+  mFor: number;
+  mAgainst: number;
+  home: { n: number; avgFor: number; avgAgainst: number; mFor: number; mAgainst: number };
+  away: { n: number; avgFor: number; avgAgainst: number; mFor: number; mAgainst: number };
   overs: Record<'0.5' | '1.5' | '2.5' | '3.5' | '4.5', number>;
   btts: number;
   cleanSheets: number;
@@ -168,10 +232,24 @@ export interface GoalsAgg {
   againsts: number[];
 }
 
-function aggGoals(ms: TeamMatch[]): GoalsAgg {
+function aggGoals(ms: TeamMatch[], opts: SummaryOpts = {}): GoalsAgg {
+  const W = weightsFor(ms, opts.decay);
+  const adj = !!opts.opponentAdjust;
+  // gole skorygowane o siłę rywala: 2 gole z mocną obroną znaczą więcej niż 2 gole ze słabą
+  const gfA = (m: TeamMatch) => (adj && m.oppDefF ? m.gf / m.oppDefF : m.gf);
+  const gaA = (m: TeamMatch) => (adj && m.oppAttF ? m.ga / m.oppAttF : m.ga);
+  const prior = opts.priors?.goals;
+  const k = prior !== undefined ? opts.shrinkK ?? 0 : 0;
   const side = (v: 'home' | 'away') => {
-    const s = ms.filter((m) => m.venue === v);
-    return { n: s.length, avgFor: avg(s.map((m) => m.gf)), avgAgainst: avg(s.map((m) => m.ga)) };
+    const idx = ms.map((m, i) => ({ m, w: W[i] })).filter(({ m }) => m.venue === v);
+    const s = idx.map((x) => x.m);
+    return {
+      n: s.length,
+      avgFor: avg(s.map((m) => m.gf)),
+      avgAgainst: avg(s.map((m) => m.ga)),
+      mFor: wmean(idx.map(({ m, w }) => [gfA(m), w])),
+      mAgainst: wmean(idx.map(({ m, w }) => [gaA(m), w])),
+    };
   };
   const ht = ms.filter((m) => m.htgf !== null && m.htga !== null);
   const tot = (m: TeamMatch) => m.gf + m.ga;
@@ -181,6 +259,8 @@ function aggGoals(ms: TeamMatch[]): GoalsAgg {
     avgFor: avg(ms.map((m) => m.gf)),
     avgAgainst: avg(ms.map((m) => m.ga)),
     avgTotal: avg(ms.map(tot)),
+    mFor: wmean(ms.map((m, i) => [gfA(m), W[i]]), k, prior),
+    mAgainst: wmean(ms.map((m, i) => [gaA(m), W[i]]), k, prior),
     home: side('home'),
     away: side('away'),
     overs: {
@@ -209,18 +289,47 @@ export interface TeamSummary {
   statsN: number;
 }
 
-export function summarize(team: TeamSummary['team'], matches: TeamMatch[]): TeamSummary {
+export function summarize(team: TeamSummary['team'], matches: TeamMatch[], opts: SummaryOpts = {}): TeamSummary {
   const w = matches.filter((m) => m.result === 'W').length;
   const d = matches.filter((m) => m.result === 'D').length;
   const l = matches.filter((m) => m.result === 'L').length;
-  const stats = Object.fromEntries(STAT_KEYS.map((k) => [k, aggStat(matches, k)])) as Record<StatKey, StatAgg>;
+  const stats = Object.fromEntries(STAT_KEYS.map((k) => [k, aggStat(matches, k, opts)])) as Record<StatKey, StatAgg>;
   return {
     team,
     matches,
     record: { w, d, l },
     points: 3 * w + d,
-    goals: aggGoals(matches),
+    goals: aggGoals(matches, opts),
     stats,
     statsN: matches.filter((m) => m.hasStats).length,
   };
+}
+
+/** Bilans rywala przed danym meczem: średnio strzelone i stracone gole. */
+export interface OpponentForm {
+  scored: number;
+  conceded: number;
+  n: number;
+}
+
+/**
+ * Dopisuje do meczów siłę rywali (1 = przeciętny rywal). Średnia „ligowa” L to średnia z rywali
+ * tej drużyny, więc nie trzeba znać średnich lig. Przy małej liczbie meczów rywala ściągamy do 1.
+ */
+export function attachOpponentFactors(matches: TeamMatch[], form: Map<number, OpponentForm>) {
+  const known = matches.map((m) => form.get(m.opponentId)).filter((f): f is OpponentForm => !!f && f.n > 0);
+  if (!known.length) return;
+  const L = known.reduce((a, f) => a + (f.scored + f.conceded) / 2, 0) / known.length || 1.35;
+  const K = 5;
+  const clamp = (x: number) => Math.min(2, Math.max(0.5, x));
+  for (const m of matches) {
+    const f = form.get(m.opponentId);
+    if (!f || f.n === 0 || L <= 0) {
+      m.oppAttF = null;
+      m.oppDefF = null;
+      continue;
+    }
+    m.oppAttF = clamp((f.n * (f.scored / L) + K) / (f.n + K));
+    m.oppDefF = clamp((f.n * (f.conceded / L) + K) / (f.n + K));
+  }
 }

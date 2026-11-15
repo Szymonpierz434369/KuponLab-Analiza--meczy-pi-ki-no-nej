@@ -1,9 +1,9 @@
 import { backtestGet, backtestSave } from './db';
-import { getFinishedFull, getFixturesByDate, getTeamFinished, warsawDate } from './data';
+import { getFinishedFull, getFixturesByDate, getOpponentForms, getTeamFinished, warsawDate } from './data';
 import { pool } from './espn';
 import { buildModel, hitRate, MODEL_VERSION } from './model';
 import { settleMarket } from './settle';
-import { summarize, toTeamMatch } from './stats';
+import { attachOpponentFactors, DEFAULT_SUMMARY_OPTS, summarize, toTeamMatch } from './stats';
 import type { ApiFixture } from './types';
 
 // Test wsteczny: dla rozegranych meczów liczymy typy tak, jak aplikacja pokazałaby je przed
@@ -63,8 +63,15 @@ async function analyse(fx: ApiFixture): Promise<BacktestRow> {
   const hl = hAll.slice(0, 10);
   const al = aAll.slice(0, 10);
   const full = await getFinishedFull([...new Set([...hl, ...al].map((f) => f.fixture.id))]);
-  const H = summarize(T.teams.home, hl.map((f) => toTeamMatch(full.get(f.fixture.id) ?? f, T.teams.home.id)));
-  const A = summarize(T.teams.away, al.map((f) => toTeamMatch(full.get(f.fixture.id) ?? f, T.teams.away.id)));
+  const hm = hl.map((f) => toTeamMatch(full.get(f.fixture.id) ?? f, T.teams.home.id));
+  const am = al.map((f) => toTeamMatch(full.get(f.fixture.id) ?? f, T.teams.away.id));
+  if (DEFAULT_SUMMARY_OPTS.opponentAdjust) {
+    const form = await getOpponentForms([...hm, ...am].map((m) => m.opponentId), season, before);
+    attachOpponentFactors(hm, form);
+    attachOpponentFactors(am, form);
+  }
+  const H = summarize(T.teams.home, hm, DEFAULT_SUMMARY_OPTS);
+  const A = summarize(T.teams.away, am, DEFAULT_SUMMARY_OPTS);
   if (Math.min(H.goals.n, A.goals.n) < 6) return base;
 
   const { markets, picks } = buildModel(H, A);

@@ -43,7 +43,7 @@ export function nbOver(line: number, mu: number, r: number): number {
 }
 
 /** Wersja modelu – zmień ją po każdej zmianie obliczeń (zakładka Skuteczność przeliczy wtedy historię). */
-export const MODEL_VERSION = 3;
+export const MODEL_VERSION = 4;
 
 /**
  * Parametry modelu. `dispersion` = r rozkładu ujemnego dwumianowego dla każdej statystyki
@@ -56,7 +56,24 @@ export const MODEL_CFG = {
   dispersion: { corners: 7, yellow: Infinity, sot: 15, shots: Infinity, fouls: 40 } as Record<'corners' | 'yellow' | 'sot' | 'shots' | 'fouls', number>,
   /** Jaką wagę ma średnia sędziego wobec średniej drużyn (0–1). Założenie – ESPN nie podaje sędziów, więc nie dało się jej przetestować. */
   refereeWeight: 0.5,
+  /** korekta Dixona-Colesa dla wyników 0:0, 1:0, 0:1, 1:1 (0 = brak) */
+  dcRho: 0,
+  /** typy muszą mieć potwierdzenie w historii drużyn (≥ 60% trafień w ostatnich meczach) */
+  historyFilter: true,
+  /** waga oczekiwanych goli wyliczonych z kursów bukmachera (0 = sam model, 1 = sam rynek) */
+  marketWeight: 0,
+  /** kalibracja szans dla rodzin zdarzeń: p' = σ(a + b·logit(p)); brak wpisu = bez zmian */
+  calibration: {} as Record<string, { a: number; b: number }>,
 };
+
+const logit = (p: number) => Math.log(p / (1 - p));
+const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
+export function calibrate(family: string, p: number): number {
+  const c = MODEL_CFG.calibration[family];
+  if (!c) return p;
+  const q = Math.min(0.999, Math.max(0.001, p));
+  return sigmoid(c.a + c.b * logit(q));
+}
 
 /** Średnie sędziego wpisane ręcznie na stronie meczu (na mecz, obie drużyny łącznie). */
 export interface RefereeInput {
@@ -124,25 +141,31 @@ const sideStat = (v: View, side: 'h' | 'a', key: StatKey) => (v.stats && v[side]
 export function buildModel(
   H: TeamSummary,
   A: TeamSummary,
-  opts: { referee?: RefereeInput } = {},
+  opts: { referee?: RefereeInput; market?: { home: number; away: number } | null } = {},
 ): { model: ModelOutput; markets: Market[]; picks: string[] } {
   // --- Gole ---
-  const hAtt = blend(H.goals.avgFor, H.goals.home.avgFor, H.goals.home.n);
-  const hDef = blend(H.goals.avgAgainst, H.goals.home.avgAgainst, H.goals.home.n);
-  const aAtt = blend(A.goals.avgFor, A.goals.away.avgFor, A.goals.away.n);
-  const aDef = blend(A.goals.avgAgainst, A.goals.away.avgAgainst, A.goals.away.n);
+  const hAtt = blend(H.goals.mFor, H.goals.home.mFor, H.goals.home.n);
+  const hDef = blend(H.goals.mAgainst, H.goals.home.mAgainst, H.goals.home.n);
+  const aAtt = blend(A.goals.mFor, A.goals.away.mFor, A.goals.away.n);
+  const aDef = blend(A.goals.mAgainst, A.goals.away.mAgainst, A.goals.away.n);
   let lh = (hAtt + aDef) / 2;
   let la = (aAtt + hDef) / 2;
 
   const xgOk = H.stats.xg.n >= 5 && A.stats.xg.n >= 5;
   if (xgOk) {
-    const xh = (H.stats.xg.avgFor + A.stats.xg.avgAgainst) / 2;
-    const xa = (A.stats.xg.avgFor + H.stats.xg.avgAgainst) / 2;
+    const xh = (H.stats.xg.mFor + A.stats.xg.mAgainst) / 2;
+    const xa = (A.stats.xg.mFor + H.stats.xg.mAgainst) / 2;
     lh = 0.65 * lh + 0.35 * xh;
     la = 0.65 * la + 0.35 * xa;
   }
   lh = clampL(lh);
   la = clampL(la);
+  // Łączenie z rynkiem: bukmacher zna składy, kontuzje i formę, której model nie widzi
+  const mw = MODEL_CFG.marketWeight;
+  if (opts.market && mw > 0) {
+    lh = (1 - mw) * lh + mw * opts.market.home;
+    la = (1 - mw) * la + mw * opts.market.away;
+  }
 
   // macierz wyników 0..10
   const N = 10;
@@ -150,7 +173,15 @@ export function buildModel(
   const scores: { h: number; a: number; p: number }[] = [];
   for (let i = 0; i <= N; i++) {
     for (let j = 0; j <= N; j++) {
-      const p = poissonPmf(i, lh) * poissonPmf(j, la);
+      let p = poissonPmf(i, lh) * poissonPmf(j, la);
+      // Dixon-Coles: poprawka dla niskich wyników (0:0 i 1:1 zdarzają się częściej niż przy niezależności)
+      const rho = MODEL_CFG.dcRho;
+      if (rho) {
+        if (i === 0 && j === 0) p *= 1 - lh * la * rho;
+        else if (i === 0 && j === 1) p *= 1 + lh * rho;
+        else if (i === 1 && j === 0) p *= 1 + la * rho;
+        else if (i === 1 && j === 1) p *= 1 - rho;
+      }
       if (i > j) pH += p;
       else if (i === j) pD += p;
       else pA += p;
@@ -170,8 +201,8 @@ export function buildModel(
 
   // --- Statystyki liczbowe ---
   const exp = (key: StatKey) => {
-    const home = clampL((H.stats[key].avgFor + A.stats[key].avgAgainst) / 2);
-    const away = clampL((A.stats[key].avgFor + H.stats[key].avgAgainst) / 2);
+    const home = clampL((H.stats[key].mFor + A.stats[key].mAgainst) / 2);
+    const away = clampL((A.stats[key].mFor + H.stats[key].mAgainst) / 2);
     return { home, away, total: home + away };
   };
   const corners = exp('corners');
@@ -198,7 +229,7 @@ export function buildModel(
       group,
       family,
       label,
-      p: Math.min(0.999, Math.max(0.001, p)),
+      p: calibrate(family, Math.min(0.999, Math.max(0.001, p))),
       hitHome: hits(H.matches, viewHome, pred),
       hitAway: hits(A.matches, viewAway, pred),
     });
@@ -318,8 +349,8 @@ export function hitRate(m: Market): number | null {
 export function choosePicks(markets: Market[]): string[] {
   const scored = markets
     .map((m) => ({ m, hit: hitRate(m) }))
-    .filter(({ m, hit }) => hit !== null && m.p >= 0.6 && m.p <= 0.92 && hit >= 0.6)
-    .map(({ m, hit }) => ({ m, score: 0.6 * m.p + 0.4 * (hit as number) }));
+    .filter(({ m, hit }) => m.p >= 0.6 && m.p <= 0.92 && (!MODEL_CFG.historyFilter || (hit !== null && hit >= 0.6)))
+    .map(({ m, hit }) => ({ m, score: MODEL_CFG.historyFilter ? 0.6 * m.p + 0.4 * (hit as number) : m.p }));
 
   const bestPerFamily = new Map<string, { m: Market; score: number }>();
   for (const s of scored) {

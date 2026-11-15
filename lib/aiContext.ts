@@ -61,6 +61,11 @@ export function compactForAi(a: MatchAnalysis) {
         ? `uwzględniono średnie sędziego (wpisane przez użytkownika): ${a.model.referee.yellow ?? '–'} żółtych, ${a.model.referee.fouls ?? '–'} fauli na mecz`
         : 'brak danych o sędzim – kartki i faule tylko ze statystyk drużyn',
       uwaga: a.model.dataWarning,
+      rynek: a.market
+        ? `kursy ${a.market.odds.provider}: 1 ${a.market.odds.home.toFixed(2)} / X ${a.market.odds.draw.toFixed(2)} / 2 ${a.market.odds.away.toFixed(2)}; szanse rynku ${pct(a.market.probs.home)}% / ${pct(a.market.probs.draw)}% / ${pct(a.market.probs.away)}%` +
+          (a.market.odds.line !== null && a.market.probs.over !== null ? `; powyżej ${a.market.odds.line} gola: ${pct(a.market.probs.over)}%` : '') +
+          '. W teście na wyniku i liniach goli rynek był dokładniejszy od modelu.'
+        : null,
     },
     typy_aplikacji: a.picks.map((id) => marketLine(a.markets.find((m) => m.id === id)!)),
     wszystkie_rynki: a.markets.map(marketLine),

@@ -208,6 +208,8 @@ function Analysis({ a: base }: { a: MatchAnalysis }) {
         </div>
       </section>
 
+      {a.market && <MarketCard a={a} />}
+
       <section className="card">
         <div className="card-head">
           <h2>Typy z najwyższą zgodnością</h2>
@@ -271,6 +273,64 @@ function Analysis({ a: base }: { a: MatchAnalysis }) {
         />
       </section>
     </div>
+  );
+}
+
+function MarketCard({ a }: { a: MatchAnalysis }) {
+  const m = a.market!;
+  const byId = new Map(a.markets.map((x) => [x.id, x]));
+  const rows: { label: string; odds: number | null; market: number | null; model: number | null }[] = [
+    { label: `1 · ${a.fixture.home.name}`, odds: m.odds.home, market: m.probs.home, model: a.model.outcome.home },
+    { label: 'X · remis', odds: m.odds.draw, market: m.probs.draw, model: a.model.outcome.draw },
+    { label: `2 · ${a.fixture.away.name}`, odds: m.odds.away, market: m.probs.away, model: a.model.outcome.away },
+  ];
+  if (m.odds.line !== null) {
+    const o = byId.get(`o${m.odds.line}`);
+    const u = byId.get(`u${m.odds.line}`);
+    rows.push({ label: `Powyżej ${m.odds.line} gola`, odds: m.odds.over, market: m.probs.over, model: o?.p ?? null });
+    rows.push({ label: `Poniżej ${m.odds.line} gola`, odds: m.odds.under, market: m.probs.over === null ? null : 1 - m.probs.over, model: u?.p ?? null });
+  }
+  return (
+    <section className="card">
+      <div className="card-head">
+        <h2>Kursy rynkowe</h2>
+        <span className="tiny muted">{m.odds.provider}, przez ESPN</span>
+      </div>
+      <div className="tbl-wrap">
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th className="l">Zdarzenie</th>
+              <th>Kurs</th>
+              <th title="Szansa wynikająca z kursów po usunięciu marży bukmachera">Rynek</th>
+              <th>Model</th>
+              <th>Różnica</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const diff = r.market !== null && r.model !== null ? r.model - r.market : null;
+              return (
+                <tr key={r.label}>
+                  <td className="l">{r.label}</td>
+                  <td>{r.odds ? r.odds.toFixed(2) : '–'}</td>
+                  <td>{r.market !== null ? pct(r.market) : '–'}</td>
+                  <td>{r.model !== null ? pct(r.model) : '–'}</td>
+                  <td className={diff === null ? 'muted' : Math.abs(diff) >= 0.08 ? 'val-neg' : 'muted'}>
+                    {diff === null ? '–' : `${diff > 0 ? '+' : ''}${(diff * 100).toFixed(0)} pp`}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="tiny muted" style={{ marginBottom: 0 }}>
+        Na wyniku meczu i liniach goli bukmacher jest dokładniejszy od modelu: w teście na ok. 1100 meczach zakłady, w których
+        model widział przewagę nad tymi kursami, dały ok. −16%. Duża różnica (czerwona) częściej oznacza, że model czegoś nie
+        wie (skład, kontuzje), niż że kurs jest okazją. Model jest najmocniejszy na faulach, kartkach, rożnych i strzałach celnych.
+      </p>
+    </section>
   );
 }
 

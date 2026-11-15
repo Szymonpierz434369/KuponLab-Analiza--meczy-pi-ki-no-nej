@@ -1,8 +1,9 @@
 import { saveAnalysisSummary } from './db';
-import { getFinishedFull, getFixture, getTeamFinished, headToHead } from './data';
+import { getFinishedFull, getFixture, getOpponentForms, getRawSummary, getTeamFinished, headToHead } from './data';
+import { fairProbs, oddsFromSummary, type MarketOdds } from './market';
 import { compactForAi } from './aiContext';
 import { buildModel, Market, ModelOutput } from './model';
-import { summarize, toTeamMatch, TeamSummary } from './stats';
+import { attachOpponentFactors, DEFAULT_SUMMARY_OPTS, summarize, toTeamMatch, TeamSummary } from './stats';
 
 export interface MatchAnalysis {
   fixture: {
@@ -22,6 +23,8 @@ export interface MatchAnalysis {
   model: ModelOutput;
   markets: Market[];
   picks: string[];
+  /** kursy bukmacherskie z ESPN (DraftKings) – tylko do porównania */
+  market: { odds: MarketOdds; probs: { home: number; draw: number; away: number; over: number | null } } | null;
   generatedAt: string;
 }
 
@@ -48,14 +51,21 @@ export async function buildAnalysis(fixtureId: number, progress: Progress = () =
   const h2hRaw = headToHead(homeAll, fx.teams.away.id);
 
   const toMatches = (list: typeof homeLast, teamId: number) => list.map((f) => toTeamMatch(full.get(f.fixture.id) ?? f, teamId));
-  const home = summarize(
-    { id: fx.teams.home.id, name: fx.teams.home.name, logo: fx.teams.home.logo },
-    toMatches(homeLast, fx.teams.home.id),
-  );
-  const away = summarize(
-    { id: fx.teams.away.id, name: fx.teams.away.name, logo: fx.teams.away.logo },
-    toMatches(awayLast, fx.teams.away.id),
-  );
+  const hm = toMatches(homeLast, fx.teams.home.id);
+  const am = toMatches(awayLast, fx.teams.away.id);
+  if (DEFAULT_SUMMARY_OPTS.opponentAdjust) {
+    progress('Sprawdzam siłę rywali z ostatnich meczów', 22, total);
+    const form = await getOpponentForms([...hm, ...am].map((m) => m.opponentId), season, before);
+    attachOpponentFactors(hm, form);
+    attachOpponentFactors(am, form);
+  }
+  const home = summarize({ id: fx.teams.home.id, name: fx.teams.home.name, logo: fx.teams.home.logo }, hm, DEFAULT_SUMMARY_OPTS);
+  const away = summarize({ id: fx.teams.away.id, name: fx.teams.away.name, logo: fx.teams.away.logo }, am, DEFAULT_SUMMARY_OPTS);
+
+  const raw = await getRawSummary(fixtureId).catch(() => null);
+  const odds = raw ? oddsFromSummary(raw) : null;
+  const fp = odds ? fairProbs(odds) : null;
+  const market = odds && fp ? { odds, probs: { home: fp.home, draw: fp.draw, away: fp.away, over: fp.over } } : null;
 
   progress('Liczę model', total, total);
   const { model, markets, picks } = buildModel(home, away);
@@ -85,6 +95,7 @@ export async function buildAnalysis(fixtureId: number, progress: Progress = () =
     model,
     markets,
     picks,
+    market,
     generatedAt: new Date().toISOString(),
   };
 

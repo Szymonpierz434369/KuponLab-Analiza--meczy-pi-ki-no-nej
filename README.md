@@ -44,6 +44,8 @@ Na Windowsie możesz też kliknąć dwa razy plik `KuponLab.bat` (albo jego kopi
 - **Kurs bukmachera**: wpisz go przy zdarzeniu. Aplikacja pokaże wartość (`szansa × kurs − 1`). Wartość dodatnia oznacza, że kurs jest wyższy niż wynika z modelu.
 - **Kupon**: dodawaj zdarzenia przyciskiem „+ Kupon”. Strona kuponu liczy łączną szansę, kurs fair, wartość i wypłatę z polskim podatkiem (12% od stawki, 10% od wygranej powyżej 2280 zł). Panel „Podpowiedzi” pokazuje minimalny kurs każdego zdarzenia, przy którym kupon jest na plus, ocenia cały kupon, sugeruje stawkę (¼ Kelly, maks. 5% budżetu) i ostrzega przed typowymi błędami: zdarzenia z jednego meczu, za niskie kursy, zbyt długi kupon, mecze, które już się zaczęły.
 - **Skuteczność**: zakładka, która sprawdza na rozegranych meczach z ostatnich 7–30 dni, ile „Typów z najwyższą zgodnością” weszło. Możesz filtrować po minimalnym kursie fair i rodzaju zdarzenia, a tabele pokazują skuteczność według rodzaju, typu, ligi i szansy z modelu (kalibrację). Pierwsze przeliczenie trwa 2–5 minut, potem liczone są tylko nowe mecze.
+- **Kursy rynkowe**: na stronie meczu karta z kursami DraftKings (1X2 i linia goli, z ESPN) porównuje szanse rynku bez marży z modelem. Duża różnica (8 pkt proc. i więcej) jest zaznaczona na czerwono.
+- **Dziennik**: na stronie Kupon przycisk „Zapisz do dziennika” zapisuje kupon z kursami, które dostałeś. Po meczach aplikacja sama rozlicza zdarzenia i pokazuje wynik, zwrot oraz trafność zdarzeń na tle tego, co zakładał model.
 - **Asystent AI**: na stronie meczu analizuje ten mecz; na stronie kuponu widzi Twój kupon i wszystkie nadchodzące mecze, które otworzyłeś w aplikacji, więc może z nich ułożyć kupon.
 
 ## Skąd są dane
@@ -58,12 +60,16 @@ Pobrane dane są zapisywane w lokalnej bazie `data/kuponlab.db`. Pierwsza analiz
 
 ## Jak działa model
 
+- **Średnie ważone**: nowsze mecze ważą więcej (każdy starszy mecz ma wagę ×0,9), a średnie są ściągane w stronę średniej ligowej (siła ściągania odpowiada 8 meczom), żeby przy małej próbie nie przesadzać. Tabele w aplikacji pokazują zwykłe średnie, model korzysta z ważonych.
+- **Siła rywali**: gole strzelone i stracone są korygowane o poziom rywali z ostatnich 10 meczów (2 gole z mocnym rywalem znaczą więcej niż 2 ze słabym).
 - **Bramki**: oczekiwana liczba goli gospodarzy to średnia z ich ataku (gole strzelone) i obrony rywala (gole stracone). Forma u siebie / na wyjeździe waży 40%, gdy drużyna ma co najmniej 3 takie mecze. Szanse wyników wynikają z rozkładu Poissona.
 - **Rożne, kartki, strzały**: średnia liczba z „za” i „przeciw” obu drużyn. Rożne i strzały celne mają większy rozrzut niż zakłada rozkład Poissona, więc dla nich model używa rozkładu ujemnego dwumianowego (parametry w `MODEL_CFG` w `lib/model.ts`, dobrane testem wstecznym). Kartki i wszystkie strzały liczone są rozkładem Poissona.
 - **Faule**: zdarzenia „faule łącznie powyżej/poniżej” i faule każdej drużyny (rozkład ujemny dwumianowy).
 - **Sędzia**: ESPN nie podaje sędziów, więc na stronie meczu można ręcznie wpisać średnią żółtych kartek i fauli sędziego na mecz. Kartki i faule liczone są wtedy pół na pół z drużyn i z sędziego (waga 50% to założenie, nieprzetestowane).
 - **Historia**: przy każdym zdarzeniu widać, ile razy wystąpiło w ostatnich meczach gospodarzy i gości, z perspektywy tego meczu (np. dla „wygranej gospodarzy” liczą się zwycięstwa gospodarzy i porażki gości).
 - **Typy z najwyższą zgodnością**: szansa z modelu 60–92% i co najmniej 60% trafień w historii obu drużyn.
+
+Sprawdzone testem wstecznym i odrzucone (zostają jako przełączniki w `MODEL_CFG`): poprawka Dixona-Colesa, mieszanie z kursami rynku, kalibracja Platta i wyłączenie filtru historii. Każda z nich obniżała trafność „Typów z najwyższą zgodnością”. Zakłady „z przewagą” modelu na 1X2 i linii goli przeciw kursom DraftKings dawały w teście około −16% zwrotu, więc na wynik i gole rynek jest dokładniejszy; mocne strony modelu to faule, kartki, rożne i strzały celne.
 
 Model nie zna składów, kontuzji, motywacji ani pogody. Traktuj go jako punkt wyjścia do własnej oceny.
 
@@ -77,6 +83,7 @@ app/                 strony i API (Next.js)
   mecz/[id]/         analiza meczu
   kupon/             kupon
   skutecznosc/       skuteczność typów (test wsteczny)
+  dziennik/          dziennik zapisanych kuponów
   api/analysis/[id]  przygotowanie analizy (strumień postępu)
   api/ai             asystent AI (Claude)
 components/          widoki: analiza, czat AI, kupon
@@ -88,6 +95,8 @@ lib/
   settle.ts          rozliczanie zdarzeń na faktycznym wyniku
   backtest.ts        test wsteczny dla zakładki Skuteczność
   analysis.ts        składanie pełnej analizy
+  market.ts          kursy rynkowe (DraftKings z ESPN)
+  journal.ts         dziennik kuponów i ich rozliczanie
   db.ts              lokalna baza SQLite
   leagues.ts         lista lig
 ```

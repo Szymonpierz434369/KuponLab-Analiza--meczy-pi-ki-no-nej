@@ -18,6 +18,7 @@ export default function CouponPage() {
   const [stake, setStake] = useState('10');
   const [tax, setTax] = useState(true);
   const [analyses, setAnalyses] = useState<unknown[]>([]);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
 
   // zapamiętujemy, czy liczyć z podatkiem (np. bez podatku w promocji Betclic)
   useEffect(() => {
@@ -133,6 +134,37 @@ export default function CouponPage() {
             </div>
           ) : (
             items.length > 0 && <div className="small muted">Wpisz kursy wszystkich zdarzeń, żeby policzyć wypłatę i wartość kuponu.</div>
+          )}
+          {items.length > 0 && (
+            <div className="row">
+              <button
+                type="button"
+                className="btn primary"
+                disabled={!totalOdds || !(s > 0)}
+                onClick={async () => {
+                  setSaveMsg(null);
+                  const res = await fetch('/api/dziennik', {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({
+                      stake: s,
+                      tax,
+                      items: items.map((x) => ({ fixtureId: x.fixtureId, match: x.match, kickoff: x.kickoff, marketId: x.marketId, label: x.label, p: x.p, odds: x.odds })),
+                    }),
+                  }).then((r) => r.json()).catch((e) => ({ error: e.message }));
+                  setSaveMsg(res.error ? res.error : 'Zapisano w dzienniku.');
+                }}
+              >
+                Zapisz do dziennika
+              </button>
+              {saveMsg ? (
+                <span className="small">
+                  {saveMsg} {saveMsg.startsWith('Zapisano') && <a href="/dziennik">Otwórz dziennik</a>}
+                </span>
+              ) : (
+                !totalOdds && <span className="small muted">Wpisz kursy wszystkich zdarzeń, żeby zapisać kupon.</span>
+              )}
+            </div>
           )}
           {items.length > 0 && (
             <div className="stack small" style={{ gap: 6 }}>

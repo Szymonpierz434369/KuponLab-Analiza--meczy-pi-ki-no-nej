@@ -82,6 +82,9 @@ export default function CouponTips({ items, tax }: { items: CouponItem[]; tax: b
   if (risky.length) tips.push({ level: 'warn', text: `Niska szansa z modelu (< 60%): ${risky.map((x) => `${x.label} ${pct(x.p)}`).join(', ')}.` });
   const weakHist = items.filter((x) => x.hit !== null && x.hit < 0.6);
   if (weakHist.length) tips.push({ level: 'info', text: `Historia słabo potwierdza: ${weakHist.map((x) => `${x.label} (${pct(x.hit as number)})`).join(', ')}.` });
+  const resultGoals = items.filter((x) => /^(1|X|2|1X|X2|12|btts|btts-no|[ou]\d|h-o|a-o|ht-o)/.test(x.marketId));
+  if (resultGoals.length)
+    tips.push({ level: 'info', text: `Wynik i gole (${resultGoals.map((x) => x.label).join(', ')}): na tych rynkach bukmacher jest dokładniejszy od modelu, a test na prawdziwych kursach nie potwierdził przewagi. Najmocniejsze typy modelu to faule, kartki, rożne i strzały celne.` });
   if (!allOdds) tips.push({ level: 'info', text: 'Wpisz kursy wszystkich zdarzeń, żeby zobaczyć wartość kuponu i sugerowaną stawkę.' });
 
   const verdict =

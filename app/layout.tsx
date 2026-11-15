@@ -23,6 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <nav className="nav">
                 <a href="/">Mecze</a>
                 <a href="/skutecznosc">Skuteczność</a>
+                <a href="/dziennik">Dziennik</a>
                 <CouponNavLink />
               </nav>
             </div>
