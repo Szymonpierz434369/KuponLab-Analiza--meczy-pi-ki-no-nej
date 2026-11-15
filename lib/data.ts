@@ -56,13 +56,15 @@ const byNewest = (a: ApiFixture, b: ApiFixture) => b.fixture.timestamp - a.fixtu
 
 /** Wszystkie zakończone mecze drużyny z bieżącego i poprzedniego sezonu (bez sparingów) */
 export async function getTeamFinished(teamId: number, season: number, beforeTs: number): Promise<ApiFixture[]> {
-  const [cur, prev] = await Promise.all([
+  // Domyślny terminarz ESPN bywa pusty (np. Bayern w sezonie 2026/27), więc pobieramy też sezon wprost.
+  const [cur, curSeason, prev] = await Promise.all([
     espnGet<{ events?: unknown[] }>(`all/teams/${teamId}/schedule`, { maxAgeMs: 6 * HOUR, soft: true }),
+    espnGet<{ events?: unknown[] }>(`all/teams/${teamId}/schedule?season=${season}`, { maxAgeMs: 6 * HOUR, soft: true }),
     espnGet<{ events?: unknown[] }>(`all/teams/${teamId}/schedule?season=${season - 1}`, { maxAgeMs: 7 * 24 * HOUR, soft: true }),
   ]);
-  if (!cur && !prev) throw new DataError(`Nie udało się pobrać terminarza drużyny (ESPN, id ${teamId}).`);
+  if (!cur && !curSeason && !prev) throw new DataError(`Nie udało się pobrać terminarza drużyny (ESPN, id ${teamId}).`);
   const seen = new Set<number>();
-  return [...(cur?.events ?? []), ...(prev?.events ?? [])]
+  return [...(cur?.events ?? []), ...(curSeason?.events ?? []), ...(prev?.events ?? [])]
     .map(fromSchedule)
     .filter((f) => !f.league.id.includes('friendly'))
     .filter((f) => FINISHED.has(f.fixture.status.short) && f.fixture.timestamp < beforeTs)

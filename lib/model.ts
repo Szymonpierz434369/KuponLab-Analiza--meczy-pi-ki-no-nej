@@ -43,7 +43,7 @@ export function nbOver(line: number, mu: number, r: number): number {
 }
 
 /** Wersja modelu – zmień ją po każdej zmianie obliczeń (zakładka Skuteczność przeliczy wtedy historię). */
-export const MODEL_VERSION = 5;
+export const MODEL_VERSION = 6;
 
 /**
  * Parametry modelu. `dispersion` = r rozkładu ujemnego dwumianowego dla każdej statystyki
