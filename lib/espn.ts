@@ -34,11 +34,22 @@ export async function espnGet<T>(path: string, opts: GetOptions): Promise<T | nu
   const fresh = cacheGet<T>(key, opts.maxAgeMs);
   if (fresh) return fresh;
   try {
-    const res = await slot(() => fetch(`${BASE}/${path}`, {
-      headers: { 'user-agent': 'Mozilla/5.0 (KuponLab; uzytek prywatny)', accept: 'application/json' },
-      cache: 'no-store',
-      signal: AbortSignal.timeout(15_000),
-    }));
+    // Do 3 prób: ESPN przy wielu zapytaniach naraz czasem odpowiada błędem albo nie odpowiada w czasie
+    let res: Response | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        res = await slot(() => fetch(`${BASE}/${path}`, {
+          headers: { 'user-agent': 'Mozilla/5.0 (Kursor; uzytek prywatny)', accept: 'application/json' },
+          cache: 'no-store',
+          signal: AbortSignal.timeout(15_000),
+        }));
+        if (res.ok || res.status === 400 || res.status === 404) break;
+      } catch (err) {
+        if (attempt === 2) throw err;
+      }
+      await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+    }
+    if (!res) throw new Error('brak odpowiedzi');
     if (!res.ok) {
       if (opts.soft) return null;
       throw new DataError(`ESPN odpowiedziało błędem ${res.status} dla ${path}.`);

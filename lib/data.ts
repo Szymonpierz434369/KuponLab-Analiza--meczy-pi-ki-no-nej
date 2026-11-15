@@ -81,6 +81,13 @@ export async function getFinishedFull(ids: number[], onEach?: (done: number, tot
   let done = 0;
   await pool(ids, 5, async (id) => {
     let f = cacheGet<ApiFixture>(`full:${id}`, Infinity);
+    const cached = f;
+    // Mecz zapisany bez statystyk (np. pobrany w trakcie gry albo zanim ESPN je uzupełnił):
+    // sprawdzamy go ponownie, najwyżej raz na dobę.
+    if (f && !(f.statistics?.length ?? 0) && !cacheGet<number>(`fullchk:${id}`, 24 * HOUR)) {
+      cacheSet(`fullchk:${id}`, Date.now());
+      f = undefined;
+    }
     if (!f) {
       const s = await espnGet<unknown>(`all/summary?event=${id}`, { maxAgeMs: HOUR, soft: true });
       if (s) {
@@ -91,6 +98,7 @@ export async function getFinishedFull(ids: number[], onEach?: (done: number, tot
         if (FINISHED.has(f.fixture.status.short) && (hasStats || oldEnough)) cacheSet(`full:${id}`, f);
       }
     }
+    f ??= cached; // gdy ponowne pobranie się nie udało, zostaje zapisana wersja
     if (f) out.set(id, f);
     onEach?.(++done, ids.length);
   });
