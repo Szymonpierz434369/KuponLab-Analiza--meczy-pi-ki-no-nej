@@ -112,7 +112,7 @@ export async function POST(req: Request) {
           max_tokens: 1800,
           // Bez trybu „myślenia”: przy nim model długo milczy przed pierwszym słowem,
           // a przy limicie tokenów potrafi zużyć go całego na myślenie i nie oddać odpowiedzi.
-          thinking: { type: 'disabled' },
+          thinking: { type: 'between_tools' },
           // pamięć podręczna promptu: kolejne pytania w ciągu kilku minut nie przesyłają danych od nowa
           system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
           messages,
@@ -124,11 +124,15 @@ export async function POST(req: Request) {
             controller.enqueue(enc.encode(ev.delta.text));
           }
         }
+        const fin = await s.finalMessage();
+        const why = fin.stop_reason;
+        console.log(`[asystent] stop=${why} wej=${fin.usage.input_tokens} cache=${fin.usage.cache_read_input_tokens ?? 0} wyj=${fin.usage.output_tokens}`);
         if (!sent) {
-          const fin = await s.finalMessage();
-          controller.enqueue(
-            enc.encode(`Asystent nie zwrócił tekstu (powód: ${fin.stop_reason ?? 'nieznany'}; bloki: ${fin.content.map((c) => c.type).join(', ') || 'brak'}).`),
-          );
+          controller.enqueue(enc.encode(`Asystent nie zwrócił tekstu (powód: ${why ?? 'nieznany'}). Spróbuj zadać pytanie jeszcze raz.`));
+        } else if (why === 'max_tokens') {
+          controller.enqueue(enc.encode('\n\n_(Odpowiedź ucięta, bo była za długa. Poproś o krótszą wersję albo o dokończenie.)_'));
+        } else if (why && why !== 'end_turn' && why !== 'stop_sequence') {
+          controller.enqueue(enc.encode(`\n\n_(Asystent przerwał odpowiedź, powód: ${why}. Spróbuj zadać pytanie jeszcze raz.)_`));
         }
       } catch (e) {
         let msg = e instanceof Anthropic.APIError ? `${e.status ?? ''} ${e.message}` : (e as Error).message;
