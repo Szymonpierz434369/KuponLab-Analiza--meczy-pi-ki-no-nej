@@ -110,14 +110,25 @@ export async function POST(req: Request) {
         const s = client.messages.stream({
           model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-5-5',
           max_tokens: 1800,
+          // Bez trybu „myślenia”: przy nim model długo milczy przed pierwszym słowem,
+          // a przy limicie tokenów potrafi zużyć go całego na myślenie i nie oddać odpowiedzi.
+          thinking: { type: 'disabled' },
           // pamięć podręczna promptu: kolejne pytania w ciągu kilku minut nie przesyłają danych od nowa
           system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
           messages,
         });
+        let sent = 0;
         for await (const ev of s) {
           if (ev.type === 'content_block_delta' && ev.delta.type === 'text_delta') {
+            sent += ev.delta.text.length;
             controller.enqueue(enc.encode(ev.delta.text));
           }
+        }
+        if (!sent) {
+          const fin = await s.finalMessage();
+          controller.enqueue(
+            enc.encode(`Asystent nie zwrócił tekstu (powód: ${fin.stop_reason ?? 'nieznany'}; bloki: ${fin.content.map((c) => c.type).join(', ') || 'brak'}).`),
+          );
         }
       } catch (e) {
         let msg = e instanceof Anthropic.APIError ? `${e.status ?? ''} ${e.message}` : (e as Error).message;
