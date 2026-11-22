@@ -13,32 +13,65 @@ Zasady:
 - Kupon wielozdarzeniowy: przypominaj, że łączna szansa to iloczyn szans, a zdarzenia z jednego meczu są zależne. Preferuj krótkie kupony (2–4 zdarzenia).
 - "Wartość" zakładu istnieje tylko, gdy szansa × kurs > 1. Bez kursów od użytkownika możesz podać kurs fair (1/szansa) jako próg opłacalności.
 - Jeśli użytkownik pisze o odrabianiu strat, długach lub graniu za pieniądze, których nie może stracić, zasugeruj przerwę i odpowiedzialną grę.
-- Formatowanie: krótkie akapity, listy z "- ", pogrubienia **tak**. Bez tabel.`;
+- Formatowanie: krótkie akapity, listy z "- ", pogrubienia **tak**. Bez tabel.
+- Odpowiadaj zwięźle (zwykle do ok. 250 słów). Dłużej tylko, gdy użytkownik prosi o pełną analizę.`;
 
 const MATCH_RULES = `Tryb: analiza jednego meczu. Na prośbę o pełną analizę omów kolejno: formę i bilans, bramki (strzelone/stracone, u siebie/na wyjeździe, over/BTTS), strzały i strzały celne, rzuty rożne, kartki, wnioski z modelu, a na końcu 2–4 typy z uzasadnieniem i poziomem ryzyka (niskie/średnie/wysokie).`;
 
-const COUPON_RULES = `Tryb: budowa i ocena kuponu. Masz kupon użytkownika i streszczenia meczów przeanalizowanych w aplikacji. Proponując kupon, wybieraj zdarzenia z sekcji "typy_aplikacji" lub "wszystkie_rynki" z wysoką szansą modelu i zgodną historią, z różnych meczów. Dla każdego zdarzenia podaj mecz, zdarzenie, szansę i kurs fair, a na końcu łączną szansę i łączny kurs fair kuponu. Jeśli nie ma przeanalizowanych meczów, poproś użytkownika, by otworzył kilka meczów w aplikacji.`;
+const COUPON_RULES = `Tryb: budowa i ocena kuponu. Masz kupon użytkownika i streszczenia meczów przeanalizowanych w aplikacji. Proponując kupon, wybieraj zdarzenia z sekcji "typy_aplikacji" lub "mocne_rynki" z wysoką szansą modelu i zgodną historią, z różnych meczów. Dla każdego zdarzenia podaj mecz, zdarzenie, szansę i kurs fair, a na końcu łączną szansę i łączny kurs fair kuponu. Jeśli nie ma przeanalizowanych meczów, poproś użytkownika, by otworzył kilka meczów w aplikacji.`;
 
 interface Msg {
   role: 'user' | 'assistant';
   content: string;
 }
 
-// Odchudzenie kontekstu kuponu: zostawiamy tylko to, co potrzebne do wyboru zdarzeń
+// Odchudzenie kontekstu kuponu. Każdy przeanalizowany mecz to kilka KB danych; przy kilkudziesięciu
+// meczach zapytanie miało dziesiątki tysięcy tokenów, przez co odpowiedź szła bardzo długo albo
+// przekraczała minutowy limit konta API. Zostawiamy mecze jeszcze nierozegrane, najbliższe w czasie,
+// i z każdego tylko typy aplikacji oraz kilka najmocniejszych rynków.
+const MAX_MATCHES = 15;
+const MAX_MARKETS = 8;
+
 function slimCoupon(ctx: { kupon?: unknown; przeanalizowane_mecze?: Record<string, unknown>[] }) {
+  const now = Date.now();
+  const upcoming = (ctx.przeanalizowane_mecze ?? [])
+    .filter((m) => {
+      const t = Date.parse(String(m.termin ?? ''));
+      return !Number.isFinite(t) || t > now - 15 * 60_000;
+    })
+    .sort((a, b) => Date.parse(String(a.termin ?? '')) - Date.parse(String(b.termin ?? '')))
+    .slice(0, MAX_MATCHES);
   return {
     kupon: ctx.kupon ?? [],
-    przeanalizowane_mecze: (ctx.przeanalizowane_mecze ?? []).map((m) => ({
-      mecz: m.mecz,
-      termin: m.termin,
-      rozgrywki: m.rozgrywki,
-      model: m.model,
-      typy_aplikacji: m.typy_aplikacji,
-      wszystkie_rynki: ((m.wszystkie_rynki as string[]) ?? []).filter((line) => {
-        const p = Number(/model (\d+)%/.exec(line)?.[1] ?? 0);
-        return p >= 55;
-      }),
-    })),
+    pominieto_meczow: Math.max(0, (ctx.przeanalizowane_mecze?.length ?? 0) - upcoming.length),
+    przeanalizowane_mecze: upcoming.map((m) => {
+      const model = (m.model ?? {}) as Record<string, unknown>;
+      const strong = ((m.wszystkie_rynki as string[]) ?? [])
+        .map((line) => ({
+          line,
+          p: Number(/model (\d+)%/.exec(line)?.[1] ?? 0),
+          h: Number(/historia (\d+)%/.exec(line)?.[1] ?? 0),
+        }))
+        .filter((x) => x.p >= 60 && x.p <= 90 && x.h >= 60)
+        .sort((a, b) => b.p + b.h - (a.p + a.h))
+        .slice(0, MAX_MARKETS)
+        .map((x) => x.line);
+      return {
+        mecz: m.mecz,
+        termin: m.termin,
+        rozgrywki: m.rozgrywki,
+        model: {
+          oczekiwane_gole: model.oczekiwane_gole,
+          szanse_1x2: model.szanse_1x2,
+          oczekiwane_rozne: model.oczekiwane_rozne,
+          oczekiwane_zolte: model.oczekiwane_zolte,
+          oczekiwane_faule: model.oczekiwane_faule,
+          uwaga: model.uwaga,
+        },
+        typy_aplikacji: m.typy_aplikacji,
+        mocne_rynki: strong,
+      };
+    }),
   };
 }
 
@@ -68,15 +101,17 @@ export async function POST(req: Request) {
   const today = new Intl.DateTimeFormat('pl-PL', { timeZone: 'Europe/Warsaw', dateStyle: 'full' }).format(new Date());
   const system = `${BASE_RULES}\n\n${mode === 'coupon' ? COUPON_RULES : MATCH_RULES}\n\nDzisiaj jest ${today}.\n\nDANE:\n${JSON.stringify(context)}`;
 
-  const client = new Anthropic();
+  // maxRetries 1: przy przekroczonym limicie lepiej szybko pokazać komunikat niż czekać minutami na kolejne próby
+  const client = new Anthropic({ maxRetries: 1, timeout: 90_000 });
   const enc = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
       try {
         const s = client.messages.stream({
           model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-5-5',
-          max_tokens: 2500,
-          system,
+          max_tokens: 1800,
+          // pamięć podręczna promptu: kolejne pytania w ciągu kilku minut nie przesyłają danych od nowa
+          system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
           messages,
         });
         for await (const ev of s) {
@@ -85,7 +120,12 @@ export async function POST(req: Request) {
           }
         }
       } catch (e) {
-        const msg = e instanceof Anthropic.APIError ? `${e.status ?? ''} ${e.message}` : (e as Error).message;
+        let msg = e instanceof Anthropic.APIError ? `${e.status ?? ''} ${e.message}` : (e as Error).message;
+        if (e instanceof Anthropic.RateLimitError)
+          msg = 'przekroczony limit zapytań na minutę na Twoim koncie API. Odczekaj minutę i spróbuj ponownie.';
+        else if (e instanceof Anthropic.APIConnectionTimeoutError) msg = 'Claude nie odpowiedział w ciągu 90 sekund. Spróbuj ponownie.';
+        else if (e instanceof Anthropic.APIError && e.status === 400 && /credit/i.test(e.message))
+          msg = 'brak środków na koncie API (console.anthropic.com → Billing).';
         controller.enqueue(enc.encode(`\n\nBłąd asystenta AI: ${msg}`));
       }
       controller.close();
