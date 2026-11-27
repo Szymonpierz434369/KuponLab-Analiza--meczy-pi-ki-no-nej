@@ -37,7 +37,7 @@ npm run dev
 
 Otwórz http://localhost:3000.
 
-Na Windowsie możesz też kliknąć dwa razy plik `KuponLab.bat` (albo jego kopię na Pulpicie): uruchomi aplikację i otworzy przeglądarkę.
+Na Windowsie możesz też kliknąć dwa razy plik `KuponLab.bat`: uruchomi aplikację i otworzy przeglądarkę. Na nowym komputerze najpierw uruchom `Zainstaluj.bat` (sprawdza Node.js, instaluje biblioteki, tworzy `.env.local` i skrót „Kursor” na pulpicie), szczegóły w `INSTRUKCJA.txt`.
 
 ## Jak korzystać
 

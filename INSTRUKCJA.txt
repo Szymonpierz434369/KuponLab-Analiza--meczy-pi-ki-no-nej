@@ -1,0 +1,25 @@
+KURSOR - instalacja na nowym komputerze (Windows)
+=================================================
+
+1. Rozpakuj ten zip, np. do folderu Dokumenty. Powstanie folder "kuponlab".
+   Mozesz go potem przeniesc w dowolne miejsce, aplikacja zadziala z kazdego folderu.
+
+2. Wejdz do folderu "kuponlab" i kliknij dwa razy plik Zainstaluj.bat.
+   - Jesli komputer nie ma programu Node.js, otworzy sie strona nodejs.org.
+     Pobierz wersje LTS, zainstaluj z domyslnymi ustawieniami i uruchom Zainstaluj.bat jeszcze raz.
+   - Instalacja pobierze biblioteki (1-3 minuty, potrzebny internet).
+   - Otworzy sie Notatnik: wklej klucz API po "ANTHROPIC_API_KEY=", zapisz i zamknij.
+     Klucz skopiujesz z pliku .env.local na swoim pierwszym komputerze
+     albo utworzysz nowy na console.anthropic.com (API Keys).
+   - Na pulpicie pojawi sie skrot "Kursor".
+
+3. Uruchamiaj aplikacje skrotem "Kursor" na pulpicie. Po kilku sekundach
+   otworzy sie przegladarka z adresem http://localhost:3000.
+   Nie zamykaj czarnego okna, dopoki korzystasz z aplikacji.
+
+Twoje kupony z Dziennika i zapisana Skutecznosc sa w folderze "data" na pierwszym komputerze.
+Jesli chcesz je miec tutaj, skopiuj ten folder do folderu "kuponlab" na nowym komputerze
+(przy wylaczonej aplikacji). Kazdy komputer ma potem wlasny, osobny dziennik.
+
+Jesli Windows pokaze ostrzezenie "System Windows ochronil ten komputer",
+kliknij "Wiecej informacji", a potem "Uruchom mimo to".
