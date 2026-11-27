@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useT } from './LangProvider';
 
 interface Msg {
   role: 'user' | 'assistant';
@@ -59,6 +60,7 @@ export default function AiChat({
 }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const box = useRef<HTMLDivElement>(null);
 
@@ -77,11 +79,11 @@ export default function AiChat({
       const res = await fetch('/api/ai', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ mode, context: context(), messages: history }),
+        body: JSON.stringify({ mode, lang: t.lang, context: context(), messages: history }),
       });
       if (!res.ok || !res.body) {
         const err = await res.text();
-        setMsgs([...history, { role: 'assistant', content: err || 'Asystent nie odpowiedział.' }]);
+        setMsgs([...history, { role: 'assistant', content: t(err) || t('Asystent nie odpowiedział.') }]);
         return;
       }
       const reader = res.body.getReader();
@@ -94,7 +96,7 @@ export default function AiChat({
         setMsgs([...history, { role: 'assistant', content: acc }]);
       }
     } catch (e) {
-      setMsgs([...history, { role: 'assistant', content: `Błąd połączenia: ${(e as Error).message}` }]);
+      setMsgs([...history, { role: 'assistant', content: `${t('Błąd połączenia:')} ${(e as Error).message}` }]);
     } finally {
       setBusy(false);
     }
@@ -107,7 +109,7 @@ export default function AiChat({
         <div className="msgs" ref={box}>
           {msgs.map((m, i) => (
             <div key={i} className={`msg ${m.role}`}>
-              {m.role === 'assistant' && !m.content ? <span className="muted">Analizuję dane…</span> : <Rich text={m.content} />}
+              {m.role === 'assistant' && !m.content ? <span className="muted">{t('Analizuję dane…')}</span> : <Rich text={m.content} />}
             </div>
           ))}
         </div>
@@ -128,7 +130,7 @@ export default function AiChat({
         <textarea
           id={`ai-input-${mode}`}
           value={input}
-          placeholder={mode === 'match' ? 'Zapytaj o ten mecz, np. czy warto grać rożne?' : 'Np. zbuduj kupon z 3 zdarzeń na kurs około 2,5'}
+          placeholder={mode === 'match' ? t('Zapytaj o ten mecz, np. czy warto grać rożne?') : t('Np. zbuduj kupon z 3 zdarzeń na kurs około 2,5')}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -138,7 +140,7 @@ export default function AiChat({
           }}
         />
         <button className="btn primary" disabled={busy || !input.trim()}>
-          Wyślij
+          {t('Wyślij')}
         </button>
       </form>
     </div>

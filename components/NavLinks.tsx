@@ -2,6 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import { CouponNavLink } from './CouponProvider';
+import { useT } from './LangProvider';
 
 const LINKS = [
   { href: '/', label: 'Mecze' },
@@ -12,12 +13,13 @@ const LINKS = [
 /** Menu z podświetleniem bieżącej strony. */
 export default function NavLinks() {
   const path = usePathname() ?? '/';
+  const t = useT();
   const on = (href: string) => (href === '/' ? path === '/' || path.startsWith('/mecz') : path.startsWith(href));
   return (
-    <nav className="nav" aria-label="Menu">
+    <nav className="nav" aria-label={t('Menu')}>
       {LINKS.map((l) => (
         <a key={l.href} href={l.href} className={on(l.href) ? 'active' : undefined} aria-current={on(l.href) ? 'page' : undefined}>
-          {l.label}
+          {t(l.label)}
         </a>
       ))}
       <CouponNavLink className={path.startsWith('/kupon') ? 'active' : undefined} />

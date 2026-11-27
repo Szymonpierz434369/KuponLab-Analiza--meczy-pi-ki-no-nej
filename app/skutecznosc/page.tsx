@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { BacktestPick, BacktestRow } from '@/lib/backtest';
+import { useT } from '@/components/LangProvider';
 
 type Load =
   | { kind: 'loading'; done: number; total: number; step: string }
@@ -17,8 +18,8 @@ interface Flat extends BacktestPick {
 }
 
 const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
-const fmtDate = (iso: string) =>
-  new Intl.DateTimeFormat('pl-PL', { timeZone: 'Europe/Warsaw', day: '2-digit', month: '2-digit' }).format(new Date(iso));
+const fmtDate = (iso: string, locale = 'pl-PL') =>
+  new Intl.DateTimeFormat(locale, { timeZone: 'Europe/Warsaw', day: '2-digit', month: '2-digit' }).format(new Date(iso));
 
 /** Przedział ufności 95% (Wilsona) dla trafności k/n: zwraca dolną i górną granicę. */
 function wilson(k: number, n: number): [number, number] {
@@ -53,6 +54,7 @@ function groupBy(list: Flat[], key: (x: Flat) => string) {
 }
 
 export default function SkutecznoscPage() {
+  const t = useT();
   const [days, setDays] = useState(21);
   const [minFair, setMinFair] = useState(1.3);
   const [group, setGroup] = useState('Wszystkie');
@@ -110,43 +112,42 @@ export default function SkutecznoscPage() {
   return (
     <div className="stack">
       <div>
-        <h1 style={{ fontSize: '1.5rem' }}>Skuteczność typów</h1>
+        <h1 style={{ fontSize: '1.5rem' }}>{t('Skuteczność typów')}</h1>
         <p className="muted small" style={{ margin: '4px 0 0', maxWidth: 760 }}>
-          Dla każdego rozegranego meczu z wybranych lig aplikacja liczy „Typy z najwyższą zgodnością” tak, jak pokazałaby je przed
-          meczem (tylko na danych sprzed spotkania), i sprawdza, czy weszły.
+          {t('Dla każdego rozegranego meczu z wybranych lig aplikacja liczy „Typy z najwyższą zgodnością” tak, jak pokazałaby je przed meczem (tylko na danych sprzed spotkania), i sprawdza, czy weszły.')}
         </p>
       </div>
 
       <div className="row">
         <label className="small row" style={{ gap: 6 }}>
-          Okres
+          {t('Okres')}
           <select id="bt-days" value={days} onChange={(e) => setDays(Number(e.target.value))}>
             {[7, 14, 21, 30].map((d) => (
-              <option key={d} value={d}>ostatnie {d} dni</option>
+              <option key={d} value={d}>{t('ostatnie {d} dni', { d })}</option>
             ))}
           </select>
         </label>
         <label className="small row" style={{ gap: 6 }}>
-          Kurs fair od
+          {t('Kurs fair od')}
           <select id="bt-fair" value={minFair} onChange={(e) => setMinFair(Number(e.target.value))}>
             {[1.0, 1.2, 1.3, 1.4, 1.5].map((f) => (
-              <option key={f} value={f}>{f === 1 ? 'wszystkie' : f.toFixed(2)}</option>
+              <option key={f} value={f}>{f === 1 ? t('wszystkie') : f.toFixed(2)}</option>
             ))}
           </select>
         </label>
         <label className="small row" style={{ gap: 6 }}>
-          Rodzaj
+          {t('Rodzaj')}
           <select id="bt-group" value={group} onChange={(e) => setGroup(e.target.value)}>
             {groups.map((g) => (
-              <option key={g} value={g}>{g}</option>
+              <option key={g} value={g}>{t(g)}</option>
             ))}
           </select>
         </label>
         <label className="small row" style={{ gap: 6 }}>
-          <input id="bt-tax" type="checkbox" checked={tax} onChange={(e) => setTax(e.target.checked)} /> podatek 12%
+          <input id="bt-tax" type="checkbox" checked={tax} onChange={(e) => setTax(e.target.checked)} /> {t('podatek 12%')}
         </label>
         <button className="btn small" onClick={() => setReload((x) => x + 1)} disabled={load.kind === 'loading'}>
-          Odśwież
+          {t('Odśwież')}
         </button>
       </div>
 
@@ -156,14 +157,13 @@ export default function SkutecznoscPage() {
             <i style={{ width: `${Math.max(4, (load.done / load.total) * 100)}%` }} />
           </div>
           <p className="muted small" style={{ margin: 0 }}>
-            {load.step} ({load.done}/{load.total}). Pierwsze przeliczenie kilku tygodni trwa 2–5 minut. Wyniki zapisują się, więc
-            następnym razem liczone są tylko nowe mecze.
+            {t(load.step)} ({load.done}/{load.total}). {t('Pierwsze przeliczenie kilku tygodni trwa 2–5 minut. Wyniki zapisują się, więc następnym razem liczone są tylko nowe mecze.')}
           </p>
         </div>
       )}
       {load.kind === 'error' && (
         <div className="err">
-          <strong>Błąd.</strong> {load.message}
+          <strong>{t('Błąd.')}</strong> {t(load.message)}
         </div>
       )}
 
@@ -176,64 +176,64 @@ export default function SkutecznoscPage() {
                   {s.n ? pct(s.rate) : '–'}
                   {s.n ? <span className="small muted" style={{ fontWeight: 500 }}> ±{(s.margin * 100).toFixed(1)}</span> : null}
                 </div>
-                <div className="l">Weszło ({s.h} z {s.n})</div>
+                <div className="l">{t('Weszło ({h} z {n})', { h: s.h, n: s.n })}</div>
               </div>
               <div className="kpi">
                 <div className="v">{s.n ? pct(s.exp) : '–'}</div>
-                <div className="l">Model zakładał</div>
+                <div className="l">{t('Model zakładał')}</div>
               </div>
               <div className="kpi">
                 <div className="v">{s.n ? s.fair.toFixed(2) : '–'}</div>
-                <div className="l">Średni kurs fair</div>
+                <div className="l">{t('Średni kurs fair')}</div>
               </div>
               <div className="kpi">
                 <div className={`v ${s.roi >= 0 ? 'val-pos' : 'val-neg'}`}>{s.n ? `${s.roi >= 0 ? '+' : ''}${(s.roi * 100).toFixed(1)}%` : '–'}</div>
-                <div className="l">Wynik po kursie fair</div>
+                <div className="l">{t('Wynik po kursie fair')}</div>
               </div>
               <div className="kpi">
                 <div className="v">{needOdds ? needOdds.toFixed(2) : '–'}</div>
-                <div className="l">Kurs na plus ({tax ? 'z podatkiem' : 'bez podatku'})</div>
+                <div className="l">{t('Kurs na plus')} ({tax ? t('z podatkiem') : t('bez podatku')})</div>
               </div>
             </div>
             <p className="tiny muted" style={{ margin: 0 }}>
-              {matches} meczów, {s.n} typów po filtrach. „Kurs na plus” to minimalny średni kurs bukmachera, przy którym przy tej
-              skuteczności wychodzisz na plus{tax ? ' (z podatkiem 12%)' : ' (bez podatku, np. promocja Betclic)'}.
-              {s.n ? ` Margines błędu: z 95% pewnością prawdziwa trafność leży między ${pct(s.lo)} a ${pct(s.hi)}. Im więcej typów, tym węższy przedział.` : ''}
+              {t('{m} meczów, {n} typów po filtrach. „Kurs na plus” to minimalny średni kurs bukmachera, przy którym przy tej skuteczności wychodzisz na plus', { m: matches, n: s.n })}
+              {tax ? t(' (z podatkiem 12%)') : t(' (bez podatku, np. promocja Betclic)')}.
+              {s.n ? ' ' + t('Margines błędu: z 95% pewnością prawdziwa trafność leży między {lo} a {hi}. Im więcej typów, tym węższy przedział.', { lo: pct(s.lo), hi: pct(s.hi) }) : ''}
             </p>
           </section>
 
           <div className="grid2" style={{ alignItems: 'start' }}>
-            <Table title="Według rodzaju" rows={groupBy(list, (x) => x.group)} />
-            <Table title="Według szansy z modelu" rows={groupBy(list, bucket).sort((a, b) => a.k.localeCompare(b.k))} note="Kalibracja: w dobrze ustawionym modelu „weszło” jest blisko „model”." />
+            <Table title={t('Według rodzaju')} rows={groupBy(list, (x) => x.group)} />
+            <Table title={t('Według szansy z modelu')} rows={groupBy(list, bucket).sort((a, b) => a.k.localeCompare(b.k))} note={t('Kalibracja: w dobrze ustawionym modelu „weszło” jest blisko „model”.')} />
           </div>
-          <Table title="Według typu" rows={groupBy(list, (x) => x.type.replace(/\d+\.5/, 'X.5'))} />
-          <Table title="Według ligi" rows={groupBy(list, (x) => x.league)} />
+          <Table title={t('Według typu')} rows={groupBy(list, (x) => x.type.replace(/\d+\.5/, 'X.5'))} />
+          <Table title={t('Według ligi')} rows={groupBy(list, (x) => x.league)} />
 
           <section className="card">
             <div className="card-head">
-              <h2>Ostatnie typy</h2>
-              <span className="tiny muted">{Math.min(80, list.length)} z {list.length}</span>
+              <h2>{t('Ostatnie typy')}</h2>
+              <span className="tiny muted">{t('{a} z {b}', { a: Math.min(80, list.length), b: list.length })}</span>
             </div>
             <div className="tbl-wrap">
               <table className="tbl">
                 <thead>
                   <tr>
-                    <th className="l">Data</th>
-                    <th className="l">Mecz</th>
-                    <th>Wynik</th>
-                    <th className="l">Typ</th>
-                    <th>Szansa</th>
-                    <th>Kurs fair</th>
+                    <th className="l">{t('Data')}</th>
+                    <th className="l">{t('Mecz')}</th>
+                    <th>{t('Wynik')}</th>
+                    <th className="l">{t('Typ')}</th>
+                    <th>{t('Szansa')}</th>
+                    <th>{t('Kurs fair')}</th>
                     <th />
                   </tr>
                 </thead>
                 <tbody>
                   {list.slice(0, 80).map((x) => (
                     <tr key={`${x.fixtureId}-${x.id}`}>
-                      <td className="l muted">{fmtDate(x.date)}</td>
+                      <td className="l muted">{fmtDate(x.date, t.locale)}</td>
                       <td className="l">{x.match}</td>
                       <td>{x.score}</td>
-                      <td className="l">{x.label}</td>
+                      <td className="l">{t(x.label)}</td>
                       <td>{pct(x.p)}</td>
                       <td>{x.fair.toFixed(2)}</td>
                       <td>
@@ -252,6 +252,7 @@ export default function SkutecznoscPage() {
 }
 
 function Table({ title, rows, note }: { title: string; rows: ({ k: string } & ReturnType<typeof stats>)[]; note?: string }) {
+  const t = useT();
   return (
     <section className="card">
       <div className="card-head">
@@ -262,11 +263,11 @@ function Table({ title, rows, note }: { title: string; rows: ({ k: string } & Re
           <thead>
             <tr>
               <th className="l" />
-              <th>Typów</th>
-              <th>Weszło</th>
-              <th title="Margines błędu (95%): prawdziwa trafność leży w tym zakresie wokół wyniku">±</th>
-              <th>Model</th>
-              <th>Różnica</th>
+              <th>{t('Typów')}</th>
+              <th>{t('Weszło')}</th>
+              <th title={t('Margines błędu (95%): prawdziwa trafność leży w tym zakresie wokół wyniku')}>±</th>
+              <th>{t('Model')}</th>
+              <th>{t('Różnica')}</th>
             </tr>
           </thead>
           <tbody>
@@ -276,7 +277,7 @@ function Table({ title, rows, note }: { title: string; rows: ({ k: string } & Re
               const sure = r.exp < r.lo || r.exp > r.hi;
               return (
                 <tr key={r.k}>
-                  <td className="l">{r.k}</td>
+                  <td className="l">{t(r.k)}</td>
                   <td>{r.n}</td>
                   <td style={{ fontWeight: 700 }}>
                     {pct(r.rate)}
@@ -295,7 +296,7 @@ function Table({ title, rows, note }: { title: string; rows: ({ k: string } & Re
         </table>
       </div>
       <p className="tiny muted" style={{ marginBottom: 0 }}>
-        {note ? `${note} ` : ''}„±” to margines błędu (95%). Różnica jest kolorowa tylko wtedy, gdy jest większa niż ten margines; szara różnica może być przypadkiem.
+        {note ? `${note} ` : ''}{t('„±” to margines błędu (95%). Różnica jest kolorowa tylko wtedy, gdy jest większa niż ten margines; szara różnica może być przypadkiem.')}
       </p>
     </section>
   );

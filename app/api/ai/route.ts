@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { makeT } from '@/lib/i18n';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -82,7 +83,7 @@ export async function POST(req: Request) {
     });
   }
 
-  let body: { mode?: 'match' | 'coupon'; context?: unknown; messages?: Msg[] };
+  let body: { mode?: 'match' | 'coupon'; lang?: string; context?: unknown; messages?: Msg[] };
   try {
     body = await req.json();
   } catch {
@@ -99,7 +100,12 @@ export async function POST(req: Request) {
   const context = mode === 'coupon' ? slimCoupon((body.context ?? {}) as Parameters<typeof slimCoupon>[0]) : body.context;
 
   const today = new Intl.DateTimeFormat('pl-PL', { timeZone: 'Europe/Warsaw', dateStyle: 'full' }).format(new Date());
-  const system = `${BASE_RULES}\n\n${mode === 'coupon' ? COUPON_RULES : MATCH_RULES}\n\nDzisiaj jest ${today}.\n\nDANE:\n${JSON.stringify(context)}`;
+  const es = body.lang === 'es';
+  const t = makeT(es ? 'es' : 'pl');
+  const langRule = es
+    ? '\n\nJĘZYK: odpowiadaj wyłącznie po hiszpańsku (español), także gdy dane są po polsku. Nazwy zdarzeń tłumacz na hiszpański (np. „Powyżej 2.5 gola” → „Más de 2.5 goles”, rożne → córners, kartki → tarjetas, faule → faltas, strzały celne → tiros a puerta, kupon → boleto/combinada, kurs fair → cuota justa).'
+    : '';
+  const system = `${BASE_RULES}\n\n${mode === 'coupon' ? COUPON_RULES : MATCH_RULES}${langRule}\n\nDzisiaj jest ${today}.\n\nDANE:\n${JSON.stringify(context)}`;
 
   // maxRetries 1: przy przekroczonym limicie lepiej szybko pokazać komunikat niż czekać minutami na kolejne próby
   const client = new Anthropic({ maxRetries: 1, timeout: 90_000 });
@@ -128,20 +134,20 @@ export async function POST(req: Request) {
         const why = fin.stop_reason;
         console.log(`[asystent] stop=${why} wej=${fin.usage.input_tokens} cache=${fin.usage.cache_read_input_tokens ?? 0} wyj=${fin.usage.output_tokens}`);
         if (!sent) {
-          controller.enqueue(enc.encode(`Asystent nie zwrócił tekstu (powód: ${why ?? 'nieznany'}). Spróbuj zadać pytanie jeszcze raz.`));
+          controller.enqueue(enc.encode(t('Asystent nie zwrócił tekstu (powód: {why}). Spróbuj zadać pytanie jeszcze raz.', { why: why ?? '?' })));
         } else if (why === 'max_tokens') {
-          controller.enqueue(enc.encode('\n\n_(Odpowiedź ucięta, bo była za długa. Poproś o krótszą wersję albo o dokończenie.)_'));
+          controller.enqueue(enc.encode(`\n\n_(${t('Odpowiedź ucięta, bo była za długa. Poproś o krótszą wersję albo o dokończenie.')})_`));
         } else if (why && why !== 'end_turn' && why !== 'stop_sequence') {
-          controller.enqueue(enc.encode(`\n\n_(Asystent przerwał odpowiedź, powód: ${why}. Spróbuj zadać pytanie jeszcze raz.)_`));
+          controller.enqueue(enc.encode(`\n\n_(${t('Asystent przerwał odpowiedź, powód: {why}. Spróbuj zadać pytanie jeszcze raz.', { why: String(why) })})_`));
         }
       } catch (e) {
         let msg = e instanceof Anthropic.APIError ? `${e.status ?? ''} ${e.message}` : (e as Error).message;
         if (e instanceof Anthropic.RateLimitError)
-          msg = 'przekroczony limit zapytań na minutę na Twoim koncie API. Odczekaj minutę i spróbuj ponownie.';
-        else if (e instanceof Anthropic.APIConnectionTimeoutError) msg = 'Claude nie odpowiedział w ciągu 90 sekund. Spróbuj ponownie.';
+          msg = t('przekroczony limit zapytań na minutę na Twoim koncie API. Odczekaj minutę i spróbuj ponownie.');
+        else if (e instanceof Anthropic.APIConnectionTimeoutError) msg = t('Claude nie odpowiedział w ciągu 90 sekund. Spróbuj ponownie.');
         else if (e instanceof Anthropic.APIError && e.status === 400 && /credit/i.test(e.message))
-          msg = 'brak środków na koncie API (console.anthropic.com → Billing).';
-        controller.enqueue(enc.encode(`\n\nBłąd asystenta AI: ${msg}`));
+          msg = t('brak środków na koncie API (console.anthropic.com → Billing).');
+        controller.enqueue(enc.encode(`\n\n${t('Błąd asystenta AI:')} ${msg}`));
       }
       controller.close();
     },

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import type { LegStats } from '@/lib/backtest';
 import { couponLinks } from '@/lib/correlation';
 import type { CouponItem } from './CouponProvider';
+import { useT } from './LangProvider';
 
 // Zapasowa trafność pojedynczego typu (kurs fair ≥ 1,25), gdy zakładka Skuteczność nie była jeszcze
 // przeliczona dla tej wersji modelu. Wartość z testu wstecznego – zob. README.
@@ -12,12 +13,13 @@ const FALLBACK_HIT = 0.803;
 const needPerLeg = (hit: number, n: number, taxF: number) => Math.pow(1 / (hit * taxF), 1 / n);
 
 const pct = (x: number) => `${(x * 100).toFixed(x < 0.1 ? 1 : 0)}%`;
-const zl = (x: number) => new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN', maximumFractionDigits: 2 }).format(x);
+const zl = (x: number, locale = 'pl-PL') => new Intl.NumberFormat(locale, { style: 'currency', currency: 'PLN', maximumFractionDigits: 2 }).format(x);
 const BANK_KEY = 'kuponlab-budzet';
 
 type Tip = { level: 'bad' | 'warn' | 'info'; text: string };
 
 export default function CouponTips({ items, tax }: { items: CouponItem[]; tax: boolean }) {
+  const t = useT();
   const [bank, setBank] = useState('');
   const [legStats, setLegStats] = useState<LegStats | null>(null);
   useEffect(() => {
@@ -66,38 +68,52 @@ export default function CouponTips({ items, tax }: { items: CouponItem[]; tax: b
   const tips: Tip[] = [];
   const now = Date.now();
   const started = items.filter((x) => new Date(x.kickoff).getTime() < now);
-  if (started.length) tips.push({ level: 'bad', text: `${started.length === 1 ? 'Jeden mecz już się zaczął' : `${started.length} mecze już się zaczęły`} albo zakończył (${started.map((x) => x.match).join(', ')}). Usuń je z kuponu.` });
+  if (started.length)
+    tips.push({
+      level: 'bad',
+      text: t(started.length === 1 ? 'Jeden mecz już się zaczął albo zakończył ({list}). Usuń go z kuponu.' : '{n} mecze już się zaczęły albo zakończyły ({list}). Usuń je z kuponu.', { n: started.length, list: started.map((x) => x.match).join(', ') }),
+    });
   const counts = new Map<number, number>();
   for (const x of items) counts.set(x.fixtureId, (counts.get(x.fixtureId) ?? 0) + 1);
   if ([...counts.values()].some((c) => c > 1))
-    tips.push({ level: 'warn', text: 'Kilka zdarzeń z jednego meczu: bukmacherzy wyceniają takie połączenia z wyższą marżą, a zdarzenia są od siebie zależne. Lepiej po jednym zdarzeniu z meczu.' });
+    tips.push({ level: 'warn', text: t('Kilka zdarzeń z jednego meczu: bukmacherzy wyceniają takie połączenia z wyższą marżą, a zdarzenia są od siebie zależne. Lepiej po jednym zdarzeniu z meczu.') });
   for (const l of links.pairs) {
     const more = l.lift > 1;
     tips.push({
       level: more ? 'info' : 'warn',
-      text: `${l.a} i ${l.b} z jednego meczu wchodzą razem o ${Math.abs(Math.round((l.lift - 1) * 100))}% ${more ? 'częściej' : 'rzadziej'}, niż wynika z mnożenia szans.${more ? ' Bukmacher zwykle to wie i w kreatorze zakładów obniża za to kurs.' : ' Te zdarzenia sobie przeszkadzają.'}`,
+      text: t(
+        more
+          ? '{a} i {b} z jednego meczu wchodzą razem o {n}% częściej, niż wynika z mnożenia szans. Bukmacher zwykle to wie i w kreatorze zakładów obniża za to kurs.'
+          : '{a} i {b} z jednego meczu wchodzą razem o {n}% rzadziej, niż wynika z mnożenia szans. Te zdarzenia sobie przeszkadzają.',
+        { a: t(l.a), b: t(l.b), n: Math.abs(Math.round((l.lift - 1) * 100)) },
+      ),
     });
   }
   if (Math.abs(links.factor - 1) >= 0.03)
-    tips.push({ level: 'info', text: `Szansa kuponu z uwzględnieniem powiązań: ${pct(P)} (zwykły iloczyn szans: ${pct(P0)}).` });
+    tips.push({ level: 'info', text: t('Szansa kuponu z uwzględnieniem powiązań: {p} (zwykły iloczyn szans: {p0}).', { p: pct(P), p0: pct(P0) }) });
   const low = legs.filter((l) => l.state === 'low');
   if (low.length)
-    tips.push({ level: 'bad', text: `Za niski kurs: ${low.map((l) => `${l.x.label} (${l.x.odds?.toFixed(2)}, potrzeba ≥ ${l.min.toFixed(2)})`).join('; ')}. Poszukaj lepszego kursu albo usuń to zdarzenie.` });
-  if (tax && N === 1) tips.push({ level: 'warn', text: 'Pojedynczy zakład z podatkiem: 12% obciąża jedno zdarzenie, więc potrzebny jest wysoki kurs. Z podatkiem najlepiej wypadały kupony z 3 zdarzeń.' });
-  if (!tax && N >= 3) tips.push({ level: 'info', text: 'Bez podatku dłuższy kupon nie obniża progu opłacalności, a każde zdarzenie dokłada marżę bukmachera i ryzyko. Rozważ 1–2 zdarzenia. Przy grze bez podatku w Betclic, po przekroczeniu 1000 zł stawek, trzymaj się kuponów z min. 2 zdarzeniami po kursie ≥ 1,20.' });
-  if (tax && N >= 5) tips.push({ level: 'warn', text: `${N} zdarzeń: kupon wejdzie mniej więcej raz na ${Math.max(2, Math.round(1 / P))} razy. Wymagany kurs na zdarzenie prawie już nie spada, a ryzyko długiej serii przegranych rośnie. Rozważ 3–4 zdarzenia.` });
-  if (!tax && N >= 5) tips.push({ level: 'warn', text: `${N} zdarzeń: kupon wejdzie mniej więcej raz na ${Math.max(2, Math.round(1 / P))} razy.` });
+    tips.push({
+      level: 'bad',
+      text: t('Za niski kurs: {list}. Poszukaj lepszego kursu albo usuń to zdarzenie.', {
+        list: low.map((l) => `${t(l.x.label)} (${l.x.odds?.toFixed(2)}, ${t('potrzeba')} ≥ ${l.min.toFixed(2)})`).join('; '),
+      }),
+    });
+  if (tax && N === 1) tips.push({ level: 'warn', text: t('Pojedynczy zakład z podatkiem: 12% obciąża jedno zdarzenie, więc potrzebny jest wysoki kurs. Z podatkiem najlepiej wypadały kupony z 3 zdarzeń.') });
+  if (!tax && N >= 3) tips.push({ level: 'info', text: t('Bez podatku dłuższy kupon nie obniża progu opłacalności, a każde zdarzenie dokłada marżę bukmachera i ryzyko. Rozważ 1–2 zdarzenia. Przy grze bez podatku w Betclic, po przekroczeniu 1000 zł stawek, trzymaj się kuponów z min. 2 zdarzeniami po kursie ≥ 1,20.') });
+  if (tax && N >= 5) tips.push({ level: 'warn', text: t('{n} zdarzeń: kupon wejdzie mniej więcej raz na {k} razy. Wymagany kurs na zdarzenie prawie już nie spada, a ryzyko długiej serii przegranych rośnie. Rozważ 3–4 zdarzenia.', { n: N, k: Math.max(2, Math.round(1 / P)) }) });
+  if (!tax && N >= 5) tips.push({ level: 'warn', text: t('{n} zdarzeń: kupon wejdzie mniej więcej raz na {k} razy.', { n: N, k: Math.max(2, Math.round(1 / P)) }) });
   const safe = items.filter((x) => x.p > 0.85);
   if (safe.length)
-    tips.push({ level: 'info', text: `„Pewniaki” (${safe.map((x) => x.label).join(', ')}) prawie nie podnoszą kursu, a każde zdarzenie dokłada marżę bukmachera i ryzyko niespodzianki.` });
+    tips.push({ level: 'info', text: t('„Pewniaki” ({list}) prawie nie podnoszą kursu, a każde zdarzenie dokłada marżę bukmachera i ryzyko niespodzianki.', { list: safe.map((x) => t(x.label)).join(', ') }) });
   const risky = items.filter((x) => x.p < 0.6);
-  if (risky.length) tips.push({ level: 'warn', text: `Niska szansa z modelu (< 60%): ${risky.map((x) => `${x.label} ${pct(x.p)}`).join(', ')}.` });
+  if (risky.length) tips.push({ level: 'warn', text: t('Niska szansa z modelu (< 60%): {list}.', { list: risky.map((x) => `${t(x.label)} ${pct(x.p)}`).join(', ') }) });
   const weakHist = items.filter((x) => x.hit !== null && x.hit < 0.6);
-  if (weakHist.length) tips.push({ level: 'info', text: `Historia słabo potwierdza: ${weakHist.map((x) => `${x.label} (${pct(x.hit as number)})`).join(', ')}.` });
+  if (weakHist.length) tips.push({ level: 'info', text: t('Historia słabo potwierdza: {list}.', { list: weakHist.map((x) => `${t(x.label)} (${pct(x.hit as number)})`).join(', ') }) });
   const resultGoals = items.filter((x) => /^(1|X|2|1X|X2|12|btts|btts-no|[ou]\d|h-o|a-o|ht-o)/.test(x.marketId));
   if (resultGoals.length)
-    tips.push({ level: 'info', text: `Wynik i gole (${resultGoals.map((x) => x.label).join(', ')}): na tych rynkach bukmacher jest dokładniejszy od modelu, a test na prawdziwych kursach nie potwierdził przewagi. Najmocniejsze typy modelu to faule, kartki, rożne i strzały celne.` });
-  if (!allOdds) tips.push({ level: 'info', text: 'Wpisz kursy wszystkich zdarzeń, żeby zobaczyć wartość kuponu i sugerowaną stawkę.' });
+    tips.push({ level: 'info', text: t('Wynik i gole ({list}): na tych rynkach bukmacher jest dokładniejszy od modelu, a test na prawdziwych kursach nie potwierdził przewagi. Najmocniejsze typy modelu to faule, kartki, rożne i strzały celne.', { list: resultGoals.map((x) => t(x.label)).join(', ') }) });
+  if (!allOdds) tips.push({ level: 'info', text: t('Wpisz kursy wszystkich zdarzeń, żeby zobaczyć wartość kuponu i sugerowaną stawkę.') });
 
   // trafność kuponu z n typów z różnych meczów ≈ trafność typu do potęgi n
   const h1 = legStats?.hit ?? FALLBACK_HIT;
@@ -105,16 +121,16 @@ export default function CouponTips({ items, tax }: { items: CouponItem[]; tax: b
 
   const verdict =
     ev === null
-      ? { cls: 'warn', text: `Kupon opłaca się, jeśli jego łączny kurs wyniesie co najmniej ${needTotal.toFixed(2)}.` }
+      ? { cls: 'warn', text: t('Kupon opłaca się, jeśli jego łączny kurs wyniesie co najmniej {k}.', { k: needTotal.toFixed(2) }) }
       : ev > 0
-        ? { cls: 'good', text: `Kupon ma dodatnią wartość: +${(ev * 100).toFixed(1)}% (${tax ? 'po podatku' : 'bez podatku'}). Kurs ${O!.toFixed(2)} przy potrzebnym ${needTotal.toFixed(2)}.` }
-        : { cls: 'err', text: `Kupon jest na minus: ${(ev * 100).toFixed(1)}% (${tax ? 'po podatku' : 'bez podatku'}). Kurs ${O!.toFixed(2)}, a potrzeba co najmniej ${needTotal.toFixed(2)}. Przy tych kursach lepiej go nie grać.` };
+        ? { cls: 'good', text: t('Kupon ma dodatnią wartość: +{v}% ({tax}). Kurs {o} przy potrzebnym {k}.', { v: (ev * 100).toFixed(1), tax: tax ? t('po podatku') : t('bez podatku'), o: O!.toFixed(2), k: needTotal.toFixed(2) }) }
+        : { cls: 'err', text: t('Kupon jest na minus: {v}% ({tax}). Kurs {o}, a potrzeba co najmniej {k}. Przy tych kursach lepiej go nie grać.', { v: (ev * 100).toFixed(1), tax: tax ? t('po podatku') : t('bez podatku'), o: O!.toFixed(2), k: needTotal.toFixed(2) }) };
 
   return (
     <section className="card stack">
       <div className="card-head" style={{ marginBottom: 0 }}>
-        <h2>Podpowiedzi</h2>
-        <span className="tiny muted">{tax ? 'z podatkiem 12%' : 'bez podatku'}</span>
+        <h2>{t('Podpowiedzi')}</h2>
+        <span className="tiny muted">{tax ? t('z podatkiem 12%') : t('bez podatku')}</span>
       </div>
 
       <div className={verdict.cls === 'good' ? 'ok-box' : verdict.cls === 'err' ? 'err' : 'warn'}>
@@ -125,22 +141,22 @@ export default function CouponTips({ items, tax }: { items: CouponItem[]; tax: b
         <table className="tbl">
           <thead>
             <tr>
-              <th className="l">Zdarzenie</th>
-              <th>Szansa</th>
-              <th title="Minimalny kurs tego zdarzenia, żeby cały kupon był na plus (podatek rozłożony na wszystkie zdarzenia)">Min. kurs</th>
-              <th>Twój kurs</th>
+              <th className="l">{t('Zdarzenie')}</th>
+              <th>{t('Szansa')}</th>
+              <th title={t('Minimalny kurs tego zdarzenia, żeby cały kupon był na plus (podatek rozłożony na wszystkie zdarzenia)')}>{t('Min. kurs')}</th>
+              <th>{t('Twój kurs')}</th>
               <th />
             </tr>
           </thead>
           <tbody>
             {legs.map(({ x, min, state }) => (
               <tr key={x.fixtureId + x.marketId}>
-                <td className="l" style={{ whiteSpace: 'normal' }}>{x.label}</td>
+                <td className="l" style={{ whiteSpace: 'normal' }}>{t(x.label)}</td>
                 <td>{pct(x.p)}</td>
                 <td>{min.toFixed(2)}</td>
                 <td>{x.odds ? x.odds.toFixed(2) : '–'}</td>
                 <td className={state === 'low' ? 'val-neg' : state === 'none' ? 'muted' : 'val-pos'}>
-                  {state === 'none' ? 'wpisz kurs' : state === 'low' ? 'za nisko' : state === 'strong' ? 'dobry kurs' : 'ok'}
+                  {state === 'none' ? t('wpisz kurs') : state === 'low' ? t('za nisko') : state === 'strong' ? t('dobry kurs') : 'ok'}
                 </td>
               </tr>
             ))}
@@ -151,55 +167,55 @@ export default function CouponTips({ items, tax }: { items: CouponItem[]; tax: b
       <div className="kpis">
         <div className="kpi">
           <div className="v">{pct(P)}</div>
-          <div className="l">Szansa kuponu</div>
+          <div className="l">{t('Szansa kuponu')}</div>
         </div>
         <div className="kpi">
-          <div className="v">{Math.round(P * 10)} z 10</div>
-          <div className="l">Tyle takich kuponów wchodzi średnio</div>
+          <div className="v">{t('{k} z 10', { k: Math.round(P * 10) })}</div>
+          <div className="l">{t('Tyle takich kuponów wchodzi średnio')}</div>
         </div>
         <div className="kpi">
           <div className="v">{pct(Math.pow(1 - P, 5))}</div>
-          <div className="l">Szansa na 5 przegranych z rzędu</div>
+          <div className="l">{t('Szansa na 5 przegranych z rzędu')}</div>
         </div>
       </div>
 
       <div className="row small">
-        <label htmlFor="bank">Budżet na zakłady</label>
-        <input id="bank" inputMode="decimal" value={bank} onChange={(e) => saveBank(e.target.value)} placeholder="np. 500" style={{ width: 100 }} />
+        <label htmlFor="bank">{t('Budżet na zakłady')}</label>
+        <input id="bank" inputMode="decimal" value={bank} onChange={(e) => saveBank(e.target.value)} placeholder={t('np. 500')} style={{ width: 100 }} />
         <span className="muted">zł</span>
         {bankNum > 0 && O ? (
           ev !== null && ev > 0 ? (
             <span>
-              Sugerowana stawka: <strong>{zl(Math.max(1, suggested))}</strong>{' '}
-              <span className="muted">(¼ Kelly{quarter * bankNum > bankNum * 0.05 ? ', ograniczona do 5% budżetu' : ''})</span>
+              {t('Sugerowana stawka:')} <strong>{zl(Math.max(1, suggested), t.locale)}</strong>{' '}
+              <span className="muted">(¼ Kelly{quarter * bankNum > bankNum * 0.05 ? t(', ograniczona do 5% budżetu') : ''})</span>
             </span>
           ) : (
-            <span className="val-neg">Przy ujemnej wartości sugerowana stawka to 0 zł.</span>
+            <span className="val-neg">{t('Przy ujemnej wartości sugerowana stawka to 0 zł.')}</span>
           )
         ) : (
-          <span className="muted">Podaj budżet i kursy, a policzę rozsądną stawkę.</span>
+          <span className="muted">{t('Podaj budżet i kursy, a policzę rozsądną stawkę.')}</span>
         )}
       </div>
 
       {tips.length > 0 && (
         <ul className="tips">
-          {tips.map((t, i) => (
-            <li key={i} className={t.level}>{t.text}</li>
+          {tips.map((tip, i) => (
+            <li key={i} className={tip.level}>{tip.text}</li>
           ))}
         </ul>
       )}
 
       <details>
         <summary className="small" style={{ cursor: 'pointer' }}>
-          Ile zdarzeń dawać? {legStats ? `Trafność typów z ostatnich 30 dni (${legStats.n} typów)` : 'Wyniki testu wstecznego'}
+          {t('Ile zdarzeń dawać?')} {legStats ? t('Trafność typów z ostatnich 30 dni ({n} typów)', { n: legStats.n }) : t('Wyniki testu wstecznego')}
         </summary>
         <div className="tbl-wrap" style={{ marginTop: 8 }}>
           <table className="tbl">
             <thead>
               <tr>
-                <th className="l">Zdarzeń</th>
-                <th>Weszło</th>
-                <th title="Średni minimalny kurs bukmachera na zdarzenie, żeby wyjść na plus">Kurs na zdarzenie na plus {tax ? '(z podatkiem)' : '(bez podatku)'}</th>
+                <th className="l">{t('Zdarzeń')}</th>
+                <th>{t('Weszło')}</th>
+                <th title={t('Średni minimalny kurs bukmachera na zdarzenie, żeby wyjść na plus')}>{t('Kurs na zdarzenie na plus')} {tax ? t('(z podatkiem)') : t('(bez podatku)')}</th>
               </tr>
             </thead>
             <tbody>
@@ -207,7 +223,7 @@ export default function CouponTips({ items, tax }: { items: CouponItem[]; tax: b
                 <tr key={r.n} className={r.n === Math.min(6, N) ? 'pick' : ''}>
                   <td className="l">
                     {r.n}
-                    {(tax ? r.n === 3 : r.n <= 2) ? ' (polecane)' : ''}
+                    {(tax ? r.n === 3 : r.n <= 2) ? ` ${t('(polecane)')}` : ''}
                   </td>
                   <td>{pct(r.hit)}</td>
                   <td>{needPerLeg(r.hit, r.n, taxF).toFixed(2)}</td>
@@ -218,17 +234,17 @@ export default function CouponTips({ items, tax }: { items: CouponItem[]; tax: b
         </div>
         <p className="tiny muted" style={{ marginBottom: 0 }}>
           {legStats
-            ? `Na podstawie zakładki Skuteczność: ${legStats.n} typów z kursem fair ≥ 1,25 z ${legStats.matches} meczów (weszło ${pct(legStats.hit)}, model zakładał ${pct(legStats.model)}). Kupony z typów z różnych meczów.`
-            : `Zakładka Skuteczność nie była jeszcze przeliczona dla tej wersji modelu, więc tabela korzysta z testu wstecznego (trafność typu ${pct(FALLBACK_HIT)}). Otwórz Skuteczność, a tabela zacznie się aktualizować.`}{' '}
+            ? t('Na podstawie zakładki Skuteczność: {n} typów z kursem fair ≥ 1,25 z {m} meczów (weszło {h}, model zakładał {p}). Kupony z typów z różnych meczów.', { n: legStats.n, m: legStats.matches, h: pct(legStats.hit), p: pct(legStats.model) })
+            : t('Zakładka Skuteczność nie była jeszcze przeliczona dla tej wersji modelu, więc tabela korzysta z testu wstecznego (trafność typu {h}). Otwórz Skuteczność, a tabela zacznie się aktualizować.', { h: pct(FALLBACK_HIT) })}{' '}
           {tax
-            ? 'Z podatkiem im więcej zdarzeń, tym lepiej rozkłada się 12%, ale kupon wchodzi rzadziej. Powyżej 4 zdarzeń zysk na podatku jest już minimalny.'
-            : 'Bez podatku próg na zdarzenie jest prawie taki sam dla każdej długości kuponu, więc krótsze kupony są bezpieczniejsze.'}{' '}
-          Aktualną skuteczność typów sprawdzisz w zakładce Skuteczność.
+            ? t('Z podatkiem im więcej zdarzeń, tym lepiej rozkłada się 12%, ale kupon wchodzi rzadziej. Powyżej 4 zdarzeń zysk na podatku jest już minimalny.')
+            : t('Bez podatku próg na zdarzenie jest prawie taki sam dla każdej długości kuponu, więc krótsze kupony są bezpieczniejsze.')}{' '}
+          {t('Aktualną skuteczność typów sprawdzisz w zakładce Skuteczność.')}
         </p>
       </details>
 
       <p className="tiny muted" style={{ margin: 0 }}>
-        Szanse pochodzą z modelu, który nie zna składów ani kontuzji. Graj stałymi, małymi stawkami i tylko za pieniądze, które możesz stracić.
+        {t('Szanse pochodzą z modelu, który nie zna składów ani kontuzji. Graj stałymi, małymi stawkami i tylko za pieniądze, które możesz stracić.')}
       </p>
     </section>
   );

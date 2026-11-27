@@ -365,3 +365,10 @@ details[open] > *:not(summary) { animation: rise 0.35s var(--ease) both; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
   html { scroll-behavior: auto; }
 }
+
+/* Przełącznik języka */
+.lang { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); flex: none; }
+.lang button { font: inherit; font-size: 0.74rem; font-weight: 700; letter-spacing: 0.04em; border: 0; background: none; color: var(--muted); padding: 4px 9px; border-radius: 999px; cursor: pointer; transition: background 0.18s var(--ease), color 0.18s; }
+.lang button:hover { color: var(--fg); }
+.lang button.on { background: var(--fg); color: var(--bg); }
+@media (max-width: 560px) { .lang button { padding: 4px 6px; } }

@@ -5,9 +5,10 @@ import AiChat from '@/components/AiChat';
 import CouponTips from '@/components/CouponTips';
 import { useCoupon } from '@/components/CouponProvider';
 import { couponLinks } from '@/lib/correlation';
+import { useT } from '@/components/LangProvider';
 
 const pct = (x: number) => `${(x * 100).toFixed(x < 0.1 ? 1 : 0)}%`;
-const zl = (x: number) => new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN' }).format(x);
+const zl = (x: number, locale = 'pl-PL') => new Intl.NumberFormat(locale, { style: 'currency', currency: 'PLN' }).format(x);
 
 // Polskie zasady: 12% podatku od stawki, 10% od wygranej powyżej 2280 zł
 const TAX_STAKE = 0.12;
@@ -16,6 +17,8 @@ const TAX_WIN_THRESHOLD = 2280;
 
 export default function CouponPage() {
   const { items, remove, setOdds, clear } = useCoupon();
+  const t = useT();
+  const z = (x: number) => zl(x, t.locale);
   const [stake, setStake] = useState('10');
   const [tax, setTax] = useState(true);
   const [analyses, setAnalyses] = useState<unknown[]>([]);
@@ -64,40 +67,39 @@ export default function CouponPage() {
   return (
     <div className="stack">
       <div className="row spread">
-        <h1 style={{ fontSize: '1.5rem' }}>Kupon</h1>
+        <h1 style={{ fontSize: '1.5rem' }}>{t('Kupon')}</h1>
         {items.length > 0 && (
-          <button className="btn small" onClick={clear}>Wyczyść kupon</button>
+          <button className="btn small" onClick={clear}>{t('Wyczyść kupon')}</button>
         )}
       </div>
 
       <div className="grid2" style={{ alignItems: 'start' }}>
         <section className="card">
           <div className="card-head">
-            <h2>Zdarzenia ({items.length})</h2>
-            <span className="tiny muted">wpisz kursy od bukmachera</span>
+            <h2>{t('Zdarzenia ({n})', { n: items.length })}</h2>
+            <span className="tiny muted">{t('wpisz kursy od bukmachera')}</span>
           </div>
           {items.length === 0 ? (
             <p className="muted small">
-              Kupon jest pusty. Otwórz <a href="/">mecz</a> i dodaj zdarzenia przyciskiem „+ Kupon”. Możesz też poprosić asystenta
-              obok, żeby zaproponował kupon z meczów, które już przeanalizowałeś.
+              {t('Kupon jest pusty.')} <a href="/">{t('Otwórz mecz')}</a> {t('i dodaj zdarzenia przyciskiem „+ Kupon”. Możesz też poprosić asystenta obok, żeby zaproponował kupon z meczów, które już przeanalizowałeś.')}
             </p>
           ) : (
             items.map((x) => (
               <div className="sel" key={x.fixtureId + x.marketId}>
                 <div style={{ minWidth: 0 }}>
                   <a href={`/mecz/${x.fixtureId}`} className="small muted">{x.match}</a>
-                  <div><strong>{x.label}</strong></div>
+                  <div><strong>{t(x.label)}</strong></div>
                   <div className="tiny muted">
-                    szansa {pct(x.p)} · kurs fair {(1 / x.p).toFixed(2)}
-                    {x.hit !== null ? ` · historia ${pct(x.hit)}` : ''}
+                    {t('szansa')} {pct(x.p)} · {t('kurs fair')} {(1 / x.p).toFixed(2)}
+                    {x.hit !== null ? ` · ${t('historia')} ${pct(x.hit)}` : ''}
                   </div>
                 </div>
                 <input
                   id={`kupon-odds-${x.fixtureId}-${x.marketId}`}
                   className="odds"
                   inputMode="decimal"
-                  placeholder="kurs"
-                  aria-label={`Kurs: ${x.label}`}
+                  placeholder={t('kurs')}
+                  aria-label={`${t('Kurs')}: ${t(x.label)}`}
                   defaultValue={x.odds ?? ''}
                   onChange={(e) => {
                     const v = parseFloat(e.target.value.replace(',', '.'));
@@ -107,38 +109,38 @@ export default function CouponPage() {
                 <span className={`small ${x.odds ? (x.p * x.odds > 1 ? 'val-pos' : 'val-neg') : 'muted'}`} style={{ minWidth: 48, textAlign: 'right' }}>
                   {x.odds ? `${x.p * x.odds - 1 > 0 ? '+' : ''}${((x.p * x.odds - 1) * 100).toFixed(0)}%` : '–'}
                 </span>
-                <button className="btn small" onClick={() => remove(x.fixtureId, x.marketId)} aria-label="Usuń z kuponu">✕</button>
+                <button className="btn small" onClick={() => remove(x.fixtureId, x.marketId)} aria-label={t('Usuń z kuponu')}>✕</button>
               </div>
             ))
           )}
         </section>
 
         <section className="card stack">
-          <h2>Podsumowanie</h2>
+          <h2>{t('Podsumowanie')}</h2>
           <div className="kpis">
-            <div className="kpi"><div className="v">{items.length ? pct(pAll) : '–'}</div><div className="l">Szansa na wejście</div></div>
-            <div className="kpi"><div className="v">{items.length ? (1 / pAll).toFixed(2) : '–'}</div><div className="l">Kurs fair</div></div>
-            <div className="kpi"><div className="v">{totalOdds ? totalOdds.toFixed(2) : '–'}</div><div className="l">Kurs kuponu</div></div>
+            <div className="kpi"><div className="v">{items.length ? pct(pAll) : '–'}</div><div className="l">{t('Szansa na wejście')}</div></div>
+            <div className="kpi"><div className="v">{items.length ? (1 / pAll).toFixed(2) : '–'}</div><div className="l">{t('Kurs fair')}</div></div>
+            <div className="kpi"><div className="v">{totalOdds ? totalOdds.toFixed(2) : '–'}</div><div className="l">{t('Kurs kuponu')}</div></div>
             <div className="kpi">
               <div className={`v ${ev === null ? '' : ev > 0 ? 'val-pos' : 'val-neg'}`}>{ev === null ? '–' : `${ev > 0 ? '+' : ''}${(ev * 100).toFixed(0)}%`}</div>
-              <div className="l">Wartość</div>
+              <div className="l">{t('Wartość')}</div>
             </div>
           </div>
           <div className="row">
-            <label htmlFor="stake" className="small">Stawka</label>
+            <label htmlFor="stake" className="small">{t('Stawka')}</label>
             <input id="stake" inputMode="decimal" value={stake} onChange={(e) => setStake(e.target.value)} style={{ width: 90 }} />
             <span className="small muted">zł</span>
             <label className="small row" style={{ gap: 6 }}>
-              <input id="tax" type="checkbox" checked={tax} onChange={(e) => changeTax(e.target.checked)} /> podatek PL
+              <input id="tax" type="checkbox" checked={tax} onChange={(e) => changeTax(e.target.checked)} /> {t('podatek PL')}
             </label>
           </div>
           {totalOdds ? (
             <div className="small">
-              Możliwa wypłata: <strong>{zl(payout)}</strong>
-              {tax && <span className="muted"> (stawka po podatku 12%: {zl(effStake)}{winTax > 0 ? `, podatek od wygranej ${zl(winTax)}` : ''})</span>}
+              {t('Możliwa wypłata:')} <strong>{z(payout)}</strong>
+              {tax && <span className="muted"> ({t('stawka po podatku 12%:')} {z(effStake)}{winTax > 0 ? `, ${t('podatek od wygranej')} ${z(winTax)}` : ''})</span>}
             </div>
           ) : (
-            items.length > 0 && <div className="small muted">Wpisz kursy wszystkich zdarzeń, żeby policzyć wypłatę i wartość kuponu.</div>
+            items.length > 0 && <div className="small muted">{t('Wpisz kursy wszystkich zdarzeń, żeby policzyć wypłatę i wartość kuponu.')}</div>
           )}
           {items.length > 0 && (
             <div className="row">
@@ -157,17 +159,17 @@ export default function CouponPage() {
                       items: items.map((x) => ({ fixtureId: x.fixtureId, match: x.match, kickoff: x.kickoff, marketId: x.marketId, label: x.label, p: x.p, odds: x.odds })),
                     }),
                   }).then((r) => r.json()).catch((e) => ({ error: e.message }));
-                  setSaveMsg(res.error ? res.error : 'Zapisano w dzienniku.');
+                  setSaveMsg(res.error ? t(res.error) : 'OK');
                 }}
               >
-                Zapisz do dziennika
+                {t('Zapisz do dziennika')}
               </button>
               {saveMsg ? (
                 <span className="small">
-                  {saveMsg} {saveMsg.startsWith('Zapisano') && <a href="/dziennik">Otwórz dziennik</a>}
+                  {saveMsg === 'OK' ? t('Zapisano w dzienniku.') : saveMsg} {saveMsg === 'OK' && <a href="/dziennik">{t('Otwórz dziennik')}</a>}
                 </span>
               ) : (
-                !totalOdds && <span className="small muted">Wpisz kursy wszystkich zdarzeń, żeby zapisać kupon.</span>
+                !totalOdds && <span className="small muted">{t('Wpisz kursy wszystkich zdarzeń, żeby zapisać kupon.')}</span>
               )}
             </div>
           )}
@@ -175,22 +177,21 @@ export default function CouponPage() {
             <div className="stack small" style={{ gap: 6 }}>
               {sameMatch && (
                 <div className="warn">
-                  Na kuponie są co najmniej dwa zdarzenia z jednego meczu. Są od siebie zależne
                   {linked
-                    ? `: szansa uwzględnia to, jak często takie zdarzenia wchodziły razem (zwykły iloczyn: ${pct(pProduct)}).`
-                    : ', więc łączna szansa może się różnić od wyliczonej.'}
+                    ? t('Na kuponie są co najmniej dwa zdarzenia z jednego meczu. Są od siebie zależne: szansa uwzględnia to, jak często takie zdarzenia wchodziły razem (zwykły iloczyn: {p}).', { p: pct(pProduct) })
+                    : t('Na kuponie są co najmniej dwa zdarzenia z jednego meczu. Są od siebie zależne, więc łączna szansa może się różnić od wyliczonej.')}
                 </div>
               )}
               {items.length >= 5 && (
                 <div className="warn">
-                  {items.length} zdarzeń: nawet przy wysokich szansach pojedynczych typów łączna szansa szybko spada. Rozważ krótszy kupon.
+                  {t('{n} zdarzeń: nawet przy wysokich szansach pojedynczych typów łączna szansa szybko spada. Rozważ krótszy kupon.', { n: items.length })}
                 </div>
               )}
-              {weakest && <div className="muted">Najsłabsze ogniwo: {weakest.label} ({pct(weakest.p)}).</div>}
+              {weakest && <div className="muted">{t('Najsłabsze ogniwo:')} {t(weakest.label)} ({pct(weakest.p)}).</div>}
             </div>
           )}
           <p className="tiny muted" style={{ margin: 0 }}>
-            Szansa kuponu to iloczyn szans zdarzeń (dla zdarzeń z jednego meczu poprawiony o ich powiązanie). Wartość dodatnia oznacza, że kurs jest wyższy niż wynika z modelu.
+            {t('Szansa kuponu to iloczyn szans zdarzeń (dla zdarzeń z jednego meczu poprawiony o ich powiązanie). Wartość dodatnia oznacza, że kurs jest wyższy niż wynika z modelu.')}
           </p>
         </section>
       </div>
@@ -199,19 +200,14 @@ export default function CouponPage() {
 
       <section className="card">
         <div className="card-head">
-          <h2>Asystent kuponu</h2>
-          <span className="tiny muted">przeanalizowane nadchodzące mecze: {analyses.length}</span>
+          <h2>{t('Asystent kuponu')}</h2>
+          <span className="tiny muted">{t('przeanalizowane nadchodzące mecze: {n}', { n: analyses.length })}</span>
         </div>
         <AiChat
           mode="coupon"
           context={() => ({ kupon: items, przeanalizowane_mecze: analyses })}
-          intro="Asystent widzi Twój kupon i wszystkie mecze, które otworzyłeś w aplikacji (nadchodzące). Im więcej meczów przeanalizujesz, tym więcej ma z czego wybierać."
-          suggestions={[
-            'Oceń mój kupon',
-            'Zbuduj bezpieczny kupon na kurs około 3',
-            'Zbuduj kupon z rożnych i kartek',
-            'Które zdarzenie usunąć z kuponu?',
-          ]}
+          intro={t('Asystent widzi Twój kupon i wszystkie mecze, które otworzyłeś w aplikacji (nadchodzące). Im więcej meczów przeanalizujesz, tym więcej ma z czego wybierać.')}
+          suggestions={[t('Oceń mój kupon'), t('Zbuduj bezpieczny kupon na kurs około 3'), t('Zbuduj kupon z rożnych i kartek'), t('Które zdarzenie usunąć z kuponu?')]}
         />
       </section>
     </div>

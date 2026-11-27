@@ -4,6 +4,8 @@ Aplikacja do analizy meczów piłkarskich i budowania kuponu. Pokazuje nadchodz�
 
 Aplikacja nie przyjmuje zakładów. Kupon to lista typów, którą przepisujesz u wybranego bukmachera.
 
+Języki: polski i hiszpański, przełącznik PL/ES w menu (wybór zapisuje się w ciasteczku `kursor-lang`). Teksty są w `lib/i18n-es.ts` (klucz = tekst po polsku), nazwy zdarzeń z modelu tłumaczą wzorce w `lib/i18n.ts`, a asystent AI odpowiada w wybranym języku. `npm run check:i18n` sprawdza, czy każdy tekst ma tłumaczenie.
+
 Wygląd: ciemny motyw „Grafit” (ciemnoszary, biały tekst, zielony akcent), font Geist (pliki w `public/fonts`, licencja SIL OFL), logo w `public/brand` i `components/Logo.tsx`. Znak to litera K, której ramiona wychodzą z piłki.
 
 ## Czego potrzebujesz

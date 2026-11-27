@@ -1,5 +1,7 @@
 'use client';
 
+import { useT } from './LangProvider';
+
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 export interface CouponItem {
@@ -68,9 +70,10 @@ export function useCoupon() {
 
 export function CouponNavLink({ className }: { className?: string }) {
   const { items } = useCoupon();
+  const t = useT();
   return (
     <a href="/kupon" className={className}>
-      Kupon{items.length > 0 && <span key={items.length} className="badge">{items.length}</span>}
+      {t('Kupon')}{items.length > 0 && <span key={items.length} className="badge">{items.length}</span>}
     </a>
   );
 }
